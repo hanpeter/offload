@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,8 +42,14 @@ class Application:
     # TODO: Allow this to be configured via environment variable
     PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.heif'}
 
-    def __init__(self):
-        pass
+    def __init__(self, logger: logging.Logger):
+        """
+        Initialize the Application.
+
+        Args:
+            logger: Logger instance for logging operations
+        """
+        self.logger = logger
 
     @staticmethod
     def _dms_to_decimal(dms: tuple, ref: str) -> float:
@@ -130,9 +137,9 @@ class Application:
                     date_taken = self._parse_exif_date(exif_dict)
                     location = self._parse_exif_location(exif_dict)
                     camera_make, camera_model, software = self._parse_exif_camera_info(exif_dict)
-        except Exception:
+        except Exception as e:
             # If we can't read the image or extract metadata, continue with None values
-            pass
+            self.logger.warning("Failed to extract metadata from %s: %s", file_path, e)
 
         return PhotoMetadata(
             path=file_path,
@@ -160,12 +167,14 @@ class Application:
         if not photos_dir.is_dir():
             raise ValueError(f"Path is not a directory: {source_dir}")
 
+        self.logger.debug("Reading photos from %s", source_dir)
         photos = []
         for file_path in photos_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in Application.PHOTO_EXTENSIONS:
                 photo_metadata = self._extract_metadata(file_path)
                 photos.append(photo_metadata)
 
+        self.logger.info("Read photos from %s, found %d photo(s)", source_dir, len(photos))
         return photos
 
     def _get_bucket_key(self, photo: PhotoMetadata, group_by: GroupBy) -> str:
@@ -200,12 +209,14 @@ class Application:
         Returns:
             Dictionary where keys are the bucket values and values are lists of PhotoMetadata
         """
+        self.logger.debug("Bucketing %d photo(s) by %s", len(photos), group_by.value)
         buckets: dict[str, list[PhotoMetadata]] = {}
 
         for photo in photos:
             key = self._get_bucket_key(photo, group_by)
             buckets.setdefault(key, []).append(photo)
 
+        self.logger.info("Bucketed %d photo(s), created %d bucket(s)", len(photos), len(buckets))
         return buckets
 
     def _get_sort_key(self, photo: PhotoMetadata, group_by: GroupBy) -> tuple:
@@ -245,7 +256,10 @@ class Application:
         Returns:
             Sorted list of PhotoMetadata objects
         """
-        return sorted(photos, key=lambda photo: self._get_sort_key(photo, group_by))
+        self.logger.debug("Sorting %d photo(s) by %s", len(photos), group_by.value)
+        sorted_photos = sorted(photos, key=lambda photo: self._get_sort_key(photo, group_by))
+        self.logger.info("Sorted %d photo(s)", len(photos))
+        return sorted_photos
 
     def copy_photos(self, photos: list[PhotoMetadata], destination: str | Path) -> None:
         """
@@ -255,6 +269,7 @@ class Application:
             photos: List of PhotoMetadata objects to copy
             destination: Path to the destination directory
         """
+        self.logger.debug("Copying %d photo(s) to %s", len(photos), destination)
         dest_path = Path(destination)
 
         # Create destination directory if it doesn't exist
@@ -264,10 +279,14 @@ class Application:
             try:
                 # Copy the file to the destination, preserving the filename
                 shutil.copy2(photo.path, dest_path / photo.path.name)
+                self.logger.debug("Copied %s to %s", photo.path.name, destination)
             except Exception as e:
                 # Log or handle the error, but continue with other photos
                 # In a production system, you might want to collect errors and return them
+                self.logger.error("Failed to copy %s to %s: %s", photo.path, destination, e)
                 raise RuntimeError(f"Failed to copy {photo.path} to {destination}: {e}") from e
+
+        self.logger.info("Copied %d photo(s) to %s", len(photos), destination)
 
     def offload_photos(self, source_dir: str | Path, destination_dir: str | Path) -> None:
         """
@@ -278,6 +297,7 @@ class Application:
             source_dir: Path to the source directory containing photos
             destination_dir: Path to the destination directory
         """
+        self.logger.debug("Offloading photos from %s to %s", source_dir, destination_dir)
         photos = self.read_photos(source_dir)
 
         # Bucket photos by year-month
@@ -287,9 +307,12 @@ class Application:
         dest_path.mkdir(parents=True, exist_ok=True)
 
         # Process each bucket
+        skipped_count = 0
         for year_month, bucket_photos in buckets.items():
             if year_month == "Unknown":
                 # Skip photos without date information
+                skipped_count += len(bucket_photos)
+                self.logger.warning("Skipping %d photo(s) without date information", len(bucket_photos))
                 continue
 
             # Parse year-month string (format: "YYYY-MM")
@@ -299,11 +322,18 @@ class Application:
                 month = int(month)
             except ValueError:
                 # Skip invalid year-month format
+                skipped_count += len(bucket_photos)
+                self.logger.warning("Skipping %d photo(s) with invalid year-month format: %s", len(bucket_photos), year_month)
                 continue
 
             # Create directory structure: year=X/month=YY (HDFS format with padded month)
             month_dir = dest_path / f"year={year}" / f"month={month:02d}"
             month_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info("Processing %d photo(s) for %s", len(bucket_photos), year_month)
 
             # Copy photos to the month directory
             self.copy_photos(bucket_photos, month_dir)
+
+        if skipped_count > 0:
+            self.logger.warning("Skipped %d photo(s) due to missing or invalid date information", skipped_count)
+        self.logger.info("Offloaded photos from %s to %s", source_dir, destination_dir)
