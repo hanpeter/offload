@@ -43,7 +43,8 @@ class VideoOffloader:
     TZ_OFFSET_PATTERN = re.compile(r'[+-]\d{2}:\d{2}$')
 
     # Regex pattern for DMS (degrees, minutes, seconds) format
-    DMS_PATTERN = re.compile(r"(\d+)\s+deg\s+(\d+)\s+'?\s*([\d.]+)\s*\"?")
+    # Matches: "37 deg 46' 26.30\"" or "37 deg 46 26.30" (with or without quotes)
+    DMS_PATTERN = re.compile(r"(\d+)\s+deg\s+(\d+)\s*'?\s*([\d.]+)\s*\"?")
 
     # Date field names in order of preference for extraction
     DATE_FIELDS = [

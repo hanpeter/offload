@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from offload.photo_offloader import PhotoOffloader, GroupBy, PhotoMetadata
+from offload.constants import GroupBy
+from offload.photo_offloader import PhotoOffloader, PhotoMetadata
 
 
 class TestPhotoOffloader:
