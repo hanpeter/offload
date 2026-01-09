@@ -1,7 +1,7 @@
 [project]
 name = "offload"
 version = "0.0.0"
-description = "Offload moves photos off your phone into safe storage. Back up to external drives and manage your photo flow through a clean, API first CLI built to grow with you."
+description = "CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files."
 authors = [
     {name = "Peter Han",email = "git@peterhan.ca"}
 ]

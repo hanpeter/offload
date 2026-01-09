@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/hanpeter/offload/actions/workflows/test.yml/badge.svg)](https://github.com/hanpeter/offload/actions/workflows/test.yml)
 
+CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files.
+
 ## Table of Contents
 
 - [Purpose](#purpose)
