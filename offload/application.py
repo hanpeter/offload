@@ -10,11 +10,9 @@ from typing import Optional
 
 from PIL import Image
 from PIL.ExifTags import GPS, TAGS
-try:
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-except ImportError:
-    pass  # pillow-heif not available, HEIC files may not work
+from pillow_heif import register_heif_opener
+
+register_heif_opener()
 
 
 @dataclass

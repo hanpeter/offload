@@ -29,11 +29,10 @@ jobs:
           cache: "poetry"
       - name: Install dependencies
         run: poetry install --with=dev --no-interaction --no-root
-      - name: Test
+      - name: Test and check coverage
         run: |
           source .venv/bin/activate
-          # TODO: Add tests
-          # pytest
+          pytest --cov=offload --cov-report=term --cov-fail-under=80
 
 concurrency:
   cancel-in-progress: true
