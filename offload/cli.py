@@ -29,5 +29,7 @@ def main(source, destination, archive, log_level):
     application = Application(logger)
     application.offload_photos(source, destination, to_archive=archive)
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
+    # Not testing the __main__ block as this is a built-in Python feature
+    # that doesn't require us to double-check.
     main()

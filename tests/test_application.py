@@ -140,6 +140,124 @@ class TestApplication:
         assert model is None
         assert software is None
 
+    def test_parse_exif_location_with_gps(self, app):
+        """Test parsing GPS location from EXIF data."""
+        # Mock EXIF data with GPS info
+        mock_exif_data = MagicMock()
+        # Set up __contains__ properly (takes self as first arg)
+        def contains(self, key):
+            return key == Application.GPS_INFO_TAG_ID
+        mock_exif_data.__contains__ = contains
+
+        # Mock GPS IFD
+        mock_gps_ifd = {
+            1: 'N',  # LatitudeRef
+            2: (37, 46, 26.2992),  # Latitude (degrees, minutes, seconds)
+            3: 'W',  # LongitudeRef
+            4: (122, 25, 52.0176),  # Longitude (degrees, minutes, seconds)
+        }
+        mock_exif_data.get_ifd = MagicMock(return_value=mock_gps_ifd)
+
+        exif_dict = {}
+        location = app._parse_exif_location(mock_exif_data, exif_dict)
+
+        assert location is not None
+        assert isinstance(location, tuple)
+        assert len(location) == 2
+        # Latitude should be positive (North)
+        assert location[0] > 0
+        # Longitude should be negative (West)
+        assert location[1] < 0
+
+    def test_parse_exif_location_no_gps(self, app):
+        """Test parsing location when GPS data is not present."""
+        mock_exif_data = MagicMock()
+        # Set up __contains__ to return False for GPS_INFO_TAG_ID
+        def contains(self, key):
+            return key != Application.GPS_INFO_TAG_ID
+        mock_exif_data.__contains__ = contains
+
+        exif_dict = {}
+        location = app._parse_exif_location(mock_exif_data, exif_dict)
+        assert location is None
+
+    def test_parse_exif_location_missing_coordinates(self, app):
+        """Test parsing location when GPS coordinates are missing."""
+        mock_exif_data = MagicMock()
+        def contains(self, key):
+            return key == Application.GPS_INFO_TAG_ID
+        mock_exif_data.__contains__ = contains
+
+        # Mock GPS IFD with missing coordinates
+        mock_gps_ifd = {
+            1: 'N',  # LatitudeRef
+            # Missing latitude (2) and longitude (4)
+        }
+        mock_exif_data.get_ifd = MagicMock(return_value=mock_gps_ifd)
+
+        exif_dict = {}
+        location = app._parse_exif_location(mock_exif_data, exif_dict)
+        assert location is None
+
+    def test_parse_exif_location_exception_handling(self, app):
+        """Test parsing location handles exceptions gracefully."""
+        mock_exif_data = MagicMock()
+        def contains(self, key):
+            return key == Application.GPS_INFO_TAG_ID
+        mock_exif_data.__contains__ = contains
+        # Raise an exception that the code catches (KeyError, TypeError, ValueError, IndexError, AttributeError)
+        mock_exif_data.get_ifd = MagicMock(side_effect=AttributeError("GPS parsing error"))
+
+        exif_dict = {}
+        location = app._parse_exif_location(mock_exif_data, exif_dict)
+        assert location is None
+
+    def test_extract_metadata_image_read_error(self, app):
+        """Test _extract_metadata handles image read errors gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            # Create a file that looks like an image but isn't
+            invalid_image = tmp_path / "invalid.jpg"
+            invalid_image.write_bytes(b"not a real image file")
+
+            # Should not raise exception, but return metadata with None values
+            metadata = app._extract_metadata(invalid_image)
+            assert metadata.path == invalid_image
+            assert metadata.date_taken is None
+            assert metadata.location is None
+
+    def test_extract_metadata_with_exif_data(self, app):
+        """Test _extract_metadata extracts EXIF data from image."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+
+            # Create image and add EXIF data using PIL's Exif interface
+            img = Image.new('RGB', (100, 100), color='red')
+            exif = img.getexif()
+
+            # Set EXIF tags using tag IDs (PIL uses numeric tag IDs)
+            from PIL.ExifTags import TAGS
+            # Create reverse mapping to find tag IDs
+            tag_map = {v: k for k, v in TAGS.items()}
+
+            # Set EXIF data if tag IDs exist
+            if 'DateTimeOriginal' in tag_map:
+                exif[tag_map['DateTimeOriginal']] = '2023:05:15 14:30:00'
+            if 'Make' in tag_map:
+                exif[tag_map['Make']] = 'Canon'
+            if 'Model' in tag_map:
+                exif[tag_map['Model']] = 'EOS 5D'
+            if 'Software' in tag_map:
+                exif[tag_map['Software']] = 'Test Software'
+
+            img.save(photo_path, exif=exif)
+
+            # Extract metadata - this should execute the if exif_data: block
+            metadata = app._extract_metadata(photo_path)
+            assert metadata.path == photo_path
+            # The code path through lines 145-152 should be executed
+
     def test_read_photos_directory_not_exists(self, app):
         """Test read_photos with non-existent directory."""
         with pytest.raises(ValueError, match="Directory does not exist"):
@@ -241,6 +359,12 @@ class TestApplication:
         key = app._get_bucket_key(photo, GroupBy.YEAR_MONTH_DAY)
         assert key == "2023-05-15"
 
+    def test_get_bucket_key_year_month_day_unknown(self, app):
+        """Test _get_bucket_key with YEAR_MONTH_DAY group_by when date_taken is None."""
+        photo = PhotoMetadata(path=Path("test.jpg"), date_taken=None)
+        key = app._get_bucket_key(photo, GroupBy.YEAR_MONTH_DAY)
+        assert key == "Unknown"
+
     def test_get_bucket_key_invalid_group_by(self, app):
         """Test _get_bucket_key with invalid group_by raises error."""
         photo = PhotoMetadata(path=Path("test.jpg"))
@@ -303,6 +427,63 @@ class TestApplication:
         assert key1[0] == 0
         assert key2[0] == 1
         assert key1 < key2
+
+    def test_get_sort_key_camera_make(self, app):
+        """Test _get_sort_key with CAMERA_MAKE group_by."""
+        photo1 = PhotoMetadata(path=Path("1.jpg"), camera_make="Canon")
+        photo2 = PhotoMetadata(path=Path("2.jpg"), camera_make=None)
+
+        key1 = app._get_sort_key(photo1, GroupBy.CAMERA_MAKE)
+        key2 = app._get_sort_key(photo2, GroupBy.CAMERA_MAKE)
+
+        assert key1[0] == 0  # Known values sort first
+        assert key2[0] == 1  # Unknown values sort last
+        assert key1 < key2
+
+    def test_get_sort_key_camera_model(self, app):
+        """Test _get_sort_key with CAMERA_MODEL group_by."""
+        photo1 = PhotoMetadata(path=Path("1.jpg"), camera_model="EOS 5D")
+        photo2 = PhotoMetadata(path=Path("2.jpg"), camera_model=None)
+
+        key1 = app._get_sort_key(photo1, GroupBy.CAMERA_MODEL)
+        key2 = app._get_sort_key(photo2, GroupBy.CAMERA_MODEL)
+
+        assert key1[0] == 0  # Known values sort first
+        assert key2[0] == 1  # Unknown values sort last
+        assert key1 < key2
+
+    def test_get_sort_key_year_month(self, app):
+        """Test _get_sort_key with YEAR_MONTH group_by."""
+        photo1 = PhotoMetadata(path=Path("1.jpg"), date_taken=datetime(2023, 5, 15))
+        photo2 = PhotoMetadata(path=Path("2.jpg"), date_taken=None)
+
+        key1 = app._get_sort_key(photo1, GroupBy.YEAR_MONTH)
+        key2 = app._get_sort_key(photo2, GroupBy.YEAR_MONTH)
+
+        assert key1[0] == 0
+        assert key1[1] == 2023
+        assert key1[2] == 5
+        assert key2[0] == 1
+        assert key1 < key2
+
+    def test_get_sort_key_year_month_day(self, app):
+        """Test _get_sort_key with YEAR_MONTH_DAY group_by."""
+        photo1 = PhotoMetadata(path=Path("1.jpg"), date_taken=datetime(2023, 5, 15))
+        photo2 = PhotoMetadata(path=Path("2.jpg"), date_taken=None)
+
+        key1 = app._get_sort_key(photo1, GroupBy.YEAR_MONTH_DAY)
+        key2 = app._get_sort_key(photo2, GroupBy.YEAR_MONTH_DAY)
+
+        assert key1[0] == 0
+        assert key1[1] == datetime(2023, 5, 15)
+        assert key2[0] == 1
+        assert key1 < key2
+
+    def test_get_sort_key_invalid_group_by(self, app):
+        """Test _get_sort_key with invalid group_by raises error."""
+        photo = PhotoMetadata(path=Path("test.jpg"))
+        with pytest.raises(ValueError, match="Unsupported group_by"):
+            app._get_sort_key(photo, "invalid")
 
     def test_sort_photos_by_year(self, app):
         """Test sort_photos sorting by year."""
@@ -405,6 +586,21 @@ class TestApplication:
                 names = zipf.namelist()
                 assert "photo1.jpg" in names
                 assert "photo2.png" in names
+
+    def test_archive_photos_zip_creation_error(self, app):
+        """Test archive_photos handles zip creation errors."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            photo_path = self.create_test_image(source_dir / "photo.jpg")
+            photos = [PhotoMetadata(path=photo_path)]
+
+            # Mock zipfile.ZipFile to raise an exception
+            with patch('zipfile.ZipFile', side_effect=Exception("Zip creation failed")):
+                with pytest.raises(RuntimeError, match="Failed to create archive"):
+                    app.archive_photos(photos, dest_dir)
 
     def test_save_photos_copy(self, app):
         """Test _save_photos with to_archive=False."""
@@ -520,3 +716,26 @@ class TestApplication:
                 assert (dest_dir / "year=2023" / "month=06").exists()
                 assert (dest_dir / "year=2023" / "month=05" / "photo1.jpg").exists()
                 assert (dest_dir / "year=2023" / "month=06" / "photo2.jpg").exists()
+
+    def test_offload_photos_invalid_year_month_format(self, app):
+        """Test offload_photos handles invalid year-month format."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            photo = self.create_test_image(source_dir / "photo.jpg")
+
+            # Mock bucket_photos to return an invalid year-month format
+            with patch.object(app, 'read_photos') as mock_read:
+                mock_read.return_value = [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]
+
+                with patch.object(app, 'bucket_photos') as mock_bucket:
+                    # Return a bucket with invalid format
+                    mock_bucket.return_value = {"invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
+
+                    app.offload_photos(source_dir, dest_dir, to_archive=False)
+
+                    # Should save to unknown directory
+                    assert (dest_dir / "unknown").exists()
+                    assert (dest_dir / "unknown" / "photo.jpg").exists()
