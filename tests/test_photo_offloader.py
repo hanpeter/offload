@@ -9,11 +9,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from offload.application import Application, GroupBy, PhotoMetadata
+from offload.photo_offloader import PhotoOffloader, GroupBy, PhotoMetadata
 
 
-class TestApplication:
-    """Test suite for the Application class."""
+class TestPhotoOffloader:
+    """Test suite for the PhotoOffloader class."""
 
     @pytest.fixture
     def logger(self):
@@ -24,8 +24,8 @@ class TestApplication:
 
     @pytest.fixture
     def app(self, logger):
-        """Create an Application instance for testing."""
-        return Application(logger)
+        """Create a PhotoOffloader instance for testing."""
+        return PhotoOffloader(logger)
 
     def create_test_image(self, path: Path, exif_data: dict = None) -> Path:
         """Create a test image file with optional EXIF data."""
@@ -37,8 +37,8 @@ class TestApplication:
         return path
 
     def test_init(self, logger):
-        """Test Application initialization."""
-        app = Application(logger)
+        """Test PhotoOffloader initialization."""
+        app = PhotoOffloader(logger)
         assert app.logger == logger
 
     def test_dms_to_decimal_north_east(self, app):
@@ -47,8 +47,8 @@ class TestApplication:
         lat_dms = (37, 46, 26.2992)
         lon_dms = (122, 25, 52.0176)
 
-        lat = Application._dms_to_decimal(lat_dms, 'N')
-        lon = Application._dms_to_decimal(lon_dms, 'E')
+        lat = PhotoOffloader._dms_to_decimal(lat_dms, 'N')
+        lon = PhotoOffloader._dms_to_decimal(lon_dms, 'E')
 
         assert lat > 0
         assert lon > 0
@@ -60,8 +60,8 @@ class TestApplication:
         lat_dms = (37, 46, 26.2992)
         lon_dms = (122, 25, 52.0176)
 
-        lat = Application._dms_to_decimal(lat_dms, 'S')
-        lon = Application._dms_to_decimal(lon_dms, 'W')
+        lat = PhotoOffloader._dms_to_decimal(lat_dms, 'S')
+        lon = PhotoOffloader._dms_to_decimal(lon_dms, 'W')
 
         assert lat < 0
         assert lon < 0
@@ -146,7 +146,7 @@ class TestApplication:
         mock_exif_data = MagicMock()
         # Set up __contains__ properly (takes self as first arg)
         def contains(self, key):
-            return key == Application.GPS_INFO_TAG_ID
+            return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
 
         # Mock GPS IFD
@@ -174,7 +174,7 @@ class TestApplication:
         mock_exif_data = MagicMock()
         # Set up __contains__ to return False for GPS_INFO_TAG_ID
         def contains(self, key):
-            return key != Application.GPS_INFO_TAG_ID
+            return key != PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
 
         exif_dict = {}
@@ -185,7 +185,7 @@ class TestApplication:
         """Test parsing location when GPS coordinates are missing."""
         mock_exif_data = MagicMock()
         def contains(self, key):
-            return key == Application.GPS_INFO_TAG_ID
+            return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
 
         # Mock GPS IFD with missing coordinates
@@ -203,7 +203,7 @@ class TestApplication:
         """Test parsing location handles exceptions gracefully."""
         mock_exif_data = MagicMock()
         def contains(self, key):
-            return key == Application.GPS_INFO_TAG_ID
+            return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
         # Raise an exception that the code catches (KeyError, TypeError, ValueError, IndexError, AttributeError)
         mock_exif_data.get_ifd = MagicMock(side_effect=AttributeError("GPS parsing error"))

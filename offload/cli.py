@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import click
-from offload.application import Application
+from offload.photo_offloader import PhotoOffloader
 
 # To allow click to display help on '-h' as well
 CONTEXT_SETTINGS = {
@@ -26,7 +26,7 @@ def main(source, destination, archive, log_level):
 
     logger.setLevel(log_level.upper())
 
-    application = Application(logger)
+    application = PhotoOffloader(logger)
     application.offload_photos(source, destination, to_archive=archive)
 
 if __name__ == '__main__':  # pragma: no cover

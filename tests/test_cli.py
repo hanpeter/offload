@@ -22,7 +22,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -48,7 +48,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -74,7 +74,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -100,7 +100,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -123,7 +123,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -145,7 +145,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -168,7 +168,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -191,7 +191,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -298,7 +298,7 @@ class TestCLI:
             logger = logging.getLogger('offload')
             logger.handlers.clear()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -324,7 +324,7 @@ class TestCLI:
             logger = logging.getLogger('offload')
             logger.handlers.clear()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -354,7 +354,7 @@ class TestCLI:
             logger = logging.getLogger('offload')
             logger.handlers.clear()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -375,7 +375,7 @@ class TestCLI:
                 assert len(logger.handlers) == handler_count_after_first
 
     def test_application_receives_logger(self):
-        """Test that Application is initialized with the logger."""
+        """Test that PhotoOffloader is initialized with the logger."""
         runner = CliRunner()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -383,7 +383,7 @@ class TestCLI:
             dest_dir = Path(tmpdir) / "dest"
             source_dir.mkdir()
 
-            with patch('offload.cli.Application') as mock_app_class:
+            with patch('offload.cli.PhotoOffloader') as mock_app_class:
                 mock_app = MagicMock()
                 mock_app_class.return_value = mock_app
 
@@ -393,7 +393,7 @@ class TestCLI:
                 ])
 
                 assert result.exit_code == 0
-                # Verify Application was called with a logger instance
+                # Verify PhotoOffloader was called with a logger instance
                 mock_app_class.assert_called_once()
                 call_args = mock_app_class.call_args
                 assert len(call_args[0]) == 1

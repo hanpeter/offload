@@ -36,7 +36,7 @@ class GroupBy(Enum):
     YEAR_MONTH_DAY = "year_month_day"
 
 
-class Application:
+class PhotoOffloader:
     # Supported photo file extensions
     # TODO: Allow this to be configured via environment variable
     PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.heif'}
@@ -46,7 +46,7 @@ class Application:
 
     def __init__(self, logger: logging.Logger):
         """
-        Initialize the Application.
+        Initialize the PhotoOffloader.
 
         Args:
             logger: Logger instance for logging operations
@@ -85,12 +85,12 @@ class Application:
             exif_dict: Dictionary of EXIF tags converted to string names
         """
         # Check if GPSInfo exists in the raw EXIF data
-        if Application.GPS_INFO_TAG_ID not in exif_data:
+        if PhotoOffloader.GPS_INFO_TAG_ID not in exif_data:
             return None
 
         try:
             # GPSInfo may be stored as an integer IFD offset, use get_ifd() to get the actual GPS IFD
-            gps_info = exif_data.get_ifd(Application.GPS_INFO_TAG_ID)
+            gps_info = exif_data.get_ifd(PhotoOffloader.GPS_INFO_TAG_ID)
 
             # GPS coordinates are stored as tuples of (degrees, minutes, seconds)
             # GPS tag IDs: 1=LatitudeRef, 2=Latitude, 3=LongitudeRef, 4=Longitude
@@ -102,8 +102,8 @@ class Application:
             if lat_data is None or lon_data is None:
                 return None
 
-            latitude = Application._dms_to_decimal(lat_data, lat_ref)
-            longitude = Application._dms_to_decimal(lon_data, lon_ref)
+            latitude = PhotoOffloader._dms_to_decimal(lat_data, lat_ref)
+            longitude = PhotoOffloader._dms_to_decimal(lon_data, lon_ref)
 
             return (latitude, longitude)
         except (KeyError, TypeError, ValueError, IndexError, AttributeError):
@@ -181,7 +181,7 @@ class Application:
         self.logger.debug("Reading photos from %s", source_dir)
         photos = []
         for file_path in photos_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in Application.PHOTO_EXTENSIONS:
+            if file_path.is_file() and file_path.suffix.lower() in PhotoOffloader.PHOTO_EXTENSIONS:
                 photo_metadata = self._extract_metadata(file_path)
                 photos.append(photo_metadata)
 
@@ -322,14 +322,14 @@ class Application:
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 # Add all photo files in the destination directory to the zip
                 for photo_file in dest_path.iterdir():
-                    if photo_file.is_file() and photo_file.suffix.lower() in Application.PHOTO_EXTENSIONS:
+                    if photo_file.is_file() and photo_file.suffix.lower() in PhotoOffloader.PHOTO_EXTENSIONS:
                         zipf.write(photo_file, photo_file.name)
                         self.logger.debug("Added %s to archive", photo_file.name)
 
             # Remove the original photo files after archiving
             removed_count = 0
             for photo_file in dest_path.iterdir():
-                if photo_file.is_file() and photo_file.suffix.lower() in Application.PHOTO_EXTENSIONS:
+                if photo_file.is_file() and photo_file.suffix.lower() in PhotoOffloader.PHOTO_EXTENSIONS:
                     photo_file.unlink()
                     removed_count += 1
 
