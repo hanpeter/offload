@@ -4,13 +4,24 @@ import shutil
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 from PIL import Image
 from PIL.ExifTags import GPS, TAGS
 from pillow_heif import register_heif_opener
+
+from offload.constants import (
+    DEFAULT_LATITUDE_REF,
+    DEFAULT_LONGITUDE_REF,
+    GroupBy,
+    MONTH_PREFIX,
+    NEGATIVE_DIRECTIONS,
+    UNKNOWN_BUCKET_KEY,
+    UNKNOWN_DIRECTORY,
+    YEAR_MONTH_SEPARATOR,
+    YEAR_PREFIX,
+)
 
 register_heif_opener()
 
@@ -26,16 +37,6 @@ class PhotoMetadata:
     software: Optional[str] = None  # Application/software used to take the photo
 
 
-class GroupBy(Enum):
-    """Enum for photo grouping and sorting parameters."""
-    SOFTWARE = "software"
-    CAMERA_MAKE = "camera_make"
-    CAMERA_MODEL = "camera_model"
-    YEAR = "year"
-    YEAR_MONTH = "year_month"
-    YEAR_MONTH_DAY = "year_month_day"
-
-
 class PhotoOffloader:
     # Supported photo file extensions
     # TODO: Allow this to be configured via environment variable
@@ -43,6 +44,30 @@ class PhotoOffloader:
 
     # EXIF tag ID for GPSInfo (GPS IFD)
     GPS_INFO_TAG_ID = 34853
+
+    # Date field names in order of preference for extraction
+    DATE_FIELDS = ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']
+
+    # EXIF date format string
+    EXIF_DATE_FORMAT = '%Y:%m:%d %H:%M:%S'
+
+    # GPS tag IDs: 1=LatitudeRef, 2=Latitude, 3=LongitudeRef, 4=Longitude
+    GPS_LATITUDE_REF_TAG_ID = 1
+    GPS_LATITUDE_TAG_ID = 2
+    GPS_LONGITUDE_REF_TAG_ID = 3
+    GPS_LONGITUDE_TAG_ID = 4
+
+    # Camera info tag names
+    CAMERA_MAKE_TAG = 'Make'
+    CAMERA_MODEL_TAG = 'Model'
+    CAMERA_SOFTWARE_TAG = 'Software'
+
+    # DMS to decimal conversion constants
+    MINUTES_PER_DEGREE = 60.0
+    SECONDS_PER_DEGREE = 3600.0
+
+    # Archive filename
+    ARCHIVE_FILENAME = "photos.zip"
 
     def __init__(self, logger: logging.Logger):
         """
@@ -57,21 +82,20 @@ class PhotoOffloader:
     def _dms_to_decimal(dms: tuple, ref: str) -> float:
         """Convert degrees, minutes, seconds to decimal degrees."""
         degrees = float(dms[0])
-        minutes = float(dms[1]) / 60.0
-        seconds = float(dms[2]) / 3600.0
+        minutes = float(dms[1]) / PhotoOffloader.MINUTES_PER_DEGREE
+        seconds = float(dms[2]) / PhotoOffloader.SECONDS_PER_DEGREE
         decimal = degrees + minutes + seconds
-        return -decimal if ref in ['S', 'W'] else decimal
+        return -decimal if ref in NEGATIVE_DIRECTIONS else decimal
 
     def _parse_exif_date(self, exif_data: dict) -> Optional[datetime]:
         """Parse date taken from EXIF data."""
         # Try different date fields in order of preference
-        date_fields = ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']
-        for field in date_fields:
+        for field in PhotoOffloader.DATE_FIELDS:
             if field in exif_data:
                 try:
                     date_str = exif_data[field]
                     # EXIF date format: "YYYY:MM:DD HH:MM:SS"
-                    return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+                    return datetime.strptime(date_str, PhotoOffloader.EXIF_DATE_FORMAT)
                 except (ValueError, TypeError):
                     continue
         return None
@@ -94,10 +118,10 @@ class PhotoOffloader:
 
             # GPS coordinates are stored as tuples of (degrees, minutes, seconds)
             # GPS tag IDs: 1=LatitudeRef, 2=Latitude, 3=LongitudeRef, 4=Longitude
-            lat_ref = gps_info.get(1, 'N')
-            lat_data = gps_info.get(2)
-            lon_ref = gps_info.get(3, 'E')
-            lon_data = gps_info.get(4)
+            lat_ref = gps_info.get(PhotoOffloader.GPS_LATITUDE_REF_TAG_ID, DEFAULT_LATITUDE_REF)
+            lat_data = gps_info.get(PhotoOffloader.GPS_LATITUDE_TAG_ID)
+            lon_ref = gps_info.get(PhotoOffloader.GPS_LONGITUDE_REF_TAG_ID, DEFAULT_LONGITUDE_REF)
+            lon_data = gps_info.get(PhotoOffloader.GPS_LONGITUDE_TAG_ID)
 
             if lat_data is None or lon_data is None:
                 return None
@@ -116,9 +140,9 @@ class PhotoOffloader:
         Returns:
             Tuple of (camera_make, camera_model, software)
         """
-        camera_make = exif_data.get('Make')
-        camera_model = exif_data.get('Model')
-        software = exif_data.get('Software')
+        camera_make = exif_data.get(PhotoOffloader.CAMERA_MAKE_TAG)
+        camera_model = exif_data.get(PhotoOffloader.CAMERA_MODEL_TAG)
+        software = exif_data.get(PhotoOffloader.CAMERA_SOFTWARE_TAG)
 
         # Convert to string if not None
         camera_make = str(camera_make) if camera_make is not None else None
@@ -191,21 +215,21 @@ class PhotoOffloader:
     def _get_bucket_key(self, photo: PhotoMetadata, group_by: GroupBy) -> str:
         """Get the bucket key for a photo based on the group_by parameter."""
         if group_by == GroupBy.SOFTWARE:
-            return photo.software if photo.software is not None else "Unknown"
+            return photo.software if photo.software is not None else UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.CAMERA_MAKE:
-            return photo.camera_make if photo.camera_make is not None else "Unknown"
+            return photo.camera_make if photo.camera_make is not None else UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.CAMERA_MODEL:
-            return photo.camera_model if photo.camera_model is not None else "Unknown"
+            return photo.camera_model if photo.camera_model is not None else UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.YEAR:
-            return str(photo.date_taken.year) if photo.date_taken is not None else "Unknown"
+            return str(photo.date_taken.year) if photo.date_taken is not None else UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.YEAR_MONTH:
             if photo.date_taken is not None:
-                return f"{photo.date_taken.year}-{photo.date_taken.month:02d}"
-            return "Unknown"
+                return f"{photo.date_taken.year}{YEAR_MONTH_SEPARATOR}{photo.date_taken.month:02d}"
+            return UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.YEAR_MONTH_DAY:
             if photo.date_taken is not None:
-                return f"{photo.date_taken.year}-{photo.date_taken.month:02d}-{photo.date_taken.day:02d}"
-            return "Unknown"
+                return f"{photo.date_taken.year}{YEAR_MONTH_SEPARATOR}{photo.date_taken.month:02d}{YEAR_MONTH_SEPARATOR}{photo.date_taken.day:02d}"
+            return UNKNOWN_BUCKET_KEY
         else:
             raise ValueError(f"Unsupported group_by parameter: {group_by}")
 
@@ -236,11 +260,11 @@ class PhotoOffloader:
         Returns a tuple that can be used for sorting, with Unknown values sorting last.
         """
         if group_by == GroupBy.SOFTWARE:
-            return (0, photo.software) if photo.software is not None else (1, "Unknown")
+            return (0, photo.software) if photo.software is not None else (1, UNKNOWN_BUCKET_KEY)
         elif group_by == GroupBy.CAMERA_MAKE:
-            return (0, photo.camera_make) if photo.camera_make is not None else (1, "Unknown")
+            return (0, photo.camera_make) if photo.camera_make is not None else (1, UNKNOWN_BUCKET_KEY)
         elif group_by == GroupBy.CAMERA_MODEL:
-            return (0, photo.camera_model) if photo.camera_model is not None else (1, "Unknown")
+            return (0, photo.camera_model) if photo.camera_model is not None else (1, UNKNOWN_BUCKET_KEY)
         elif group_by == GroupBy.YEAR:
             if photo.date_taken is not None:
                 return (0, photo.date_taken.year)
@@ -315,7 +339,7 @@ class PhotoOffloader:
         self.copy_photos(photos, destination)
 
         # Create zip file in the destination directory
-        zip_path = dest_path / "photos.zip"
+        zip_path = dest_path / PhotoOffloader.ARCHIVE_FILENAME
         self.logger.debug("Creating zip archive at %s", zip_path)
 
         try:
@@ -376,9 +400,9 @@ class PhotoOffloader:
         unknown_count = 0
         invalid_format_count = 0
         for year_month, bucket_photos in buckets.items():
-            if year_month == "Unknown":
+            if year_month == UNKNOWN_BUCKET_KEY:
                 # Save photos without date information to unknown directory
-                unknown_dir = dest_path / "unknown"
+                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 unknown_count += len(bucket_photos)
                 self.logger.info("Processing %d photo(s) without date information", len(bucket_photos))
                 self._save_photos(bucket_photos, unknown_dir, to_archive)
@@ -386,19 +410,19 @@ class PhotoOffloader:
 
             # Parse year-month string (format: "YYYY-MM")
             try:
-                year, month = year_month.split("-")
+                year, month = year_month.split(YEAR_MONTH_SEPARATOR)
                 year = int(year)
                 month = int(month)
             except ValueError:
                 # Save photos with invalid year-month format to unknown directory
-                unknown_dir = dest_path / "unknown"
+                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 invalid_format_count += len(bucket_photos)
                 self.logger.warning("Processing %d photo(s) with invalid year-month format (%s) to unknown directory", len(bucket_photos), year_month)
                 self._save_photos(bucket_photos, unknown_dir, to_archive)
                 continue
 
             # Create directory structure: year=X/month=YY (HDFS format with padded month)
-            month_dir = dest_path / f"year={year}" / f"month={month:02d}"
+            month_dir = dest_path / f"{YEAR_PREFIX}{year}" / f"{MONTH_PREFIX}{month:02d}"
             self.logger.info("Processing %d photo(s) for %s", len(bucket_photos), year_month)
             self._save_photos(bucket_photos, month_dir, to_archive)
 
