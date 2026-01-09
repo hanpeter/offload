@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -42,6 +43,9 @@ class Application:
     # TODO: Allow this to be configured via environment variable
     PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.heic', '.heif'}
 
+    # EXIF tag ID for GPSInfo (GPS IFD)
+    GPS_INFO_TAG_ID = 34853
+
     def __init__(self, logger: logging.Logger):
         """
         Initialize the Application.
@@ -74,13 +78,22 @@ class Application:
                     continue
         return None
 
-    def _parse_exif_location(self, exif_data: dict) -> Optional[tuple[float, float]]:
-        """Parse GPS location from EXIF data."""
-        if 'GPSInfo' not in exif_data:
+    def _parse_exif_location(self, exif_data, exif_dict: dict) -> Optional[tuple[float, float]]:
+        """
+        Parse GPS location from EXIF data.
+
+        Args:
+            exif_data: Raw PIL Exif object (for accessing GPS IFD)
+            exif_dict: Dictionary of EXIF tags converted to string names
+        """
+        # Check if GPSInfo exists in the raw EXIF data
+        if Application.GPS_INFO_TAG_ID not in exif_data:
             return None
 
-        gps_info = exif_data['GPSInfo']
         try:
+            # GPSInfo may be stored as an integer IFD offset, use get_ifd() to get the actual GPS IFD
+            gps_info = exif_data.get_ifd(Application.GPS_INFO_TAG_ID)
+
             # GPS coordinates are stored as tuples of (degrees, minutes, seconds)
             # GPS tag IDs: 1=LatitudeRef, 2=Latitude, 3=LongitudeRef, 4=Longitude
             lat_ref = gps_info.get(1, 'N')
@@ -95,7 +108,7 @@ class Application:
             longitude = Application._dms_to_decimal(lon_data, lon_ref)
 
             return (latitude, longitude)
-        except (KeyError, TypeError, ValueError, IndexError):
+        except (KeyError, TypeError, ValueError, IndexError, AttributeError):
             return None
 
     def _parse_exif_camera_info(self, exif_data: dict) -> tuple[Optional[str], Optional[str], Optional[str]]:
@@ -135,7 +148,7 @@ class Application:
                         exif_dict[tag] = value
 
                     date_taken = self._parse_exif_date(exif_dict)
-                    location = self._parse_exif_location(exif_dict)
+                    location = self._parse_exif_location(exif_data, exif_dict)
                     camera_make, camera_model, software = self._parse_exif_camera_info(exif_dict)
         except Exception as e:
             # If we can't read the image or extract metadata, continue with None values
@@ -288,14 +301,69 @@ class Application:
 
         self.logger.info("Copied %d photo(s) to %s", len(photos), destination)
 
-    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path) -> None:
+    def archive_photos(self, photos: list[PhotoMetadata], destination: str | Path) -> None:
         """
-        Read photos from source directory, bucket by year-month, and copy to destination
+        Archive photos to a destination directory by copying them and then compressing
+        them into a zip file. The original photos are removed after archiving.
+
+        Args:
+            photos: List of PhotoMetadata objects to archive
+            destination: Path to the destination directory (leaf directory where zip will be created)
+        """
+        self.logger.debug("Archiving %d photo(s) to %s", len(photos), destination)
+        dest_path = Path(destination)
+
+        # First, copy photos to the destination directory
+        self.copy_photos(photos, destination)
+
+        # Create zip file in the destination directory
+        zip_path = dest_path / "photos.zip"
+        self.logger.debug("Creating zip archive at %s", zip_path)
+
+        try:
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Add all photo files in the destination directory to the zip
+                for photo_file in dest_path.iterdir():
+                    if photo_file.is_file() and photo_file.suffix.lower() in Application.PHOTO_EXTENSIONS:
+                        zipf.write(photo_file, photo_file.name)
+                        self.logger.debug("Added %s to archive", photo_file.name)
+
+            # Remove the original photo files after archiving
+            removed_count = 0
+            for photo_file in dest_path.iterdir():
+                if photo_file.is_file() and photo_file.suffix.lower() in Application.PHOTO_EXTENSIONS:
+                    photo_file.unlink()
+                    removed_count += 1
+
+            self.logger.info("Archived %d photo(s) to %s", len(photos), zip_path)
+        except Exception as e:
+            self.logger.error("Failed to create archive at %s: %s", zip_path, e)
+            raise RuntimeError(f"Failed to create archive at {zip_path}: {e}") from e
+
+    def _save_photos(self, photos: list[PhotoMetadata], destination: Path, to_archive: bool) -> None:
+        """
+        Save photos to a destination directory, either by copying or archiving.
+
+        Args:
+            photos: List of PhotoMetadata objects to save
+            destination: Path to the destination directory
+            to_archive: If True, archive photos into zip files instead of copying them
+        """
+        destination.mkdir(parents=True, exist_ok=True)
+        if to_archive:
+            self.archive_photos(photos, destination)
+        else:
+            self.copy_photos(photos, destination)
+
+    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False) -> None:
+        """
+        Read photos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
 
         Args:
             source_dir: Path to the source directory containing photos
             destination_dir: Path to the destination directory
+            to_archive: If True, archive photos into zip files instead of copying them
         """
         self.logger.debug("Offloading photos from %s to %s", source_dir, destination_dir)
         photos = self.read_photos(source_dir)
@@ -307,12 +375,15 @@ class Application:
         dest_path.mkdir(parents=True, exist_ok=True)
 
         # Process each bucket
-        skipped_count = 0
+        unknown_count = 0
+        invalid_format_count = 0
         for year_month, bucket_photos in buckets.items():
             if year_month == "Unknown":
-                # Skip photos without date information
-                skipped_count += len(bucket_photos)
-                self.logger.warning("Skipping %d photo(s) without date information", len(bucket_photos))
+                # Save photos without date information to unknown directory
+                unknown_dir = dest_path / "unknown"
+                unknown_count += len(bucket_photos)
+                self.logger.info("Processing %d photo(s) without date information", len(bucket_photos))
+                self._save_photos(bucket_photos, unknown_dir, to_archive)
                 continue
 
             # Parse year-month string (format: "YYYY-MM")
@@ -321,19 +392,21 @@ class Application:
                 year = int(year)
                 month = int(month)
             except ValueError:
-                # Skip invalid year-month format
-                skipped_count += len(bucket_photos)
-                self.logger.warning("Skipping %d photo(s) with invalid year-month format: %s", len(bucket_photos), year_month)
+                # Save photos with invalid year-month format to unknown directory
+                unknown_dir = dest_path / "unknown"
+                invalid_format_count += len(bucket_photos)
+                self.logger.warning("Processing %d photo(s) with invalid year-month format (%s) to unknown directory", len(bucket_photos), year_month)
+                self._save_photos(bucket_photos, unknown_dir, to_archive)
                 continue
 
             # Create directory structure: year=X/month=YY (HDFS format with padded month)
             month_dir = dest_path / f"year={year}" / f"month={month:02d}"
-            month_dir.mkdir(parents=True, exist_ok=True)
             self.logger.info("Processing %d photo(s) for %s", len(bucket_photos), year_month)
+            self._save_photos(bucket_photos, month_dir, to_archive)
 
-            # Copy photos to the month directory
-            self.copy_photos(bucket_photos, month_dir)
-
-        if skipped_count > 0:
-            self.logger.warning("Skipped %d photo(s) due to missing or invalid date information", skipped_count)
+        # Log warnings for photos that were saved to unknown directory
+        if unknown_count > 0:
+            self.logger.warning("%d photo(s) were saved to unknown directory due to missing date information", unknown_count)
+        if invalid_format_count > 0:
+            self.logger.warning("%d photo(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
         self.logger.info("Offloaded photos from %s to %s", source_dir, destination_dir)

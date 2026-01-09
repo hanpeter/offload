@@ -11,8 +11,9 @@ CONTEXT_SETTINGS = {
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.option('-s', '--source', type=click.Path(exists=True, file_okay=False, dir_okay=True), required=True, help='Source directory containing photos')
 @click.option('-d', '--destination', type=click.Path(exists=False, file_okay=False, dir_okay=True), required=True, help='Destination directory to copy photos to')
+@click.option('-a', '--archive', is_flag=True, default=False, help='Archive photos into zip files instead of copying them')
 @click.option('--log-level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']), default='INFO', help='Set the logging level')
-def main(source, destination, log_level):
+def main(source, destination, archive, log_level):
     # Create a basic logger
     logger = logging.getLogger('offload')
 
@@ -26,7 +27,7 @@ def main(source, destination, log_level):
     logger.setLevel(log_level.upper())
 
     application = Application(logger)
-    application.offload_photos(source, destination)
+    application.offload_photos(source, destination, to_archive=archive)
 
 if __name__ == '__main__':
     main()
