@@ -1,6 +1,10 @@
 # offload
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fhanpeter%2Foffload-blue)](https://github.com/hanpeter/offload/pkgs/container/offload)
 [![Tests](https://github.com/hanpeter/offload/actions/workflows/test.yml/badge.svg)](https://github.com/hanpeter/offload/actions/workflows/test.yml)
+[![Build](https://github.com/hanpeter/offload/actions/workflows/build.yml/badge.svg)](https://github.com/hanpeter/offload/actions/workflows/build.yml)
 
 CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files.
 
@@ -8,12 +12,18 @@ CLI tool to organize photos and videos by extracting EXIF metadata. Automaticall
 
 - [Purpose](#purpose)
 - [Installation](#installation)
-  - [Prerequisites](#prerequisites)
-  - [Installing offload](#installing-offload)
+  - [Option 1: Install from Source Code](#option-1-install-from-source-code)
+    - [Prerequisites](#prerequisites)
+    - [Installing offload](#installing-offload)
+  - [Option 2: Use Docker](#option-2-use-docker)
 - [Usage](#usage)
-  - [Basic Syntax](#basic-syntax)
   - [Options](#options)
-  - [Examples](#examples)
+  - [Option 1: Using the Command-Line Tool](#option-1-using-the-command-line-tool)
+    - [Basic Syntax](#basic-syntax)
+    - [Examples](#examples)
+  - [Option 2: Using Docker](#option-2-using-docker-1)
+    - [Basic Syntax](#basic-syntax-1)
+    - [Examples](#examples-1)
 - [Contributing](#contributing)
 
 ## Purpose
@@ -30,15 +40,19 @@ Key features:
 
 ## Installation
 
-### Prerequisites
+You can install `offload` in two ways: from source code or using Docker. Docker is recommended if you want to avoid installing system dependencies manually.
 
-Before installing `offload`, you need to ensure the following dependencies are installed:
+### Option 1: Install from Source Code
+
+#### Prerequisites
+
+Before installing `offload` from source, you need to ensure the following dependencies are installed:
 
 1. **pillow-heif**: Required for HEIC/HEIF image format support. See the [pillow-heif installation documentation](https://pillow-heif.readthedocs.io/en/latest/installation.html) for platform-specific installation instructions.
 
 2. **pyexiftool**: Required for extracting metadata from media files. This library requires Phil Harvey's `exiftool` command-line application. See the [pyexiftool dependencies documentation](https://github.com/sylikc/pyexiftool?tab=readme-ov-file#pyexiftool-dependencies) for installation instructions.
 
-### Installing offload
+#### Installing offload
 
 Once prerequisites are installed, you can install `offload` using Poetry:
 
@@ -52,15 +66,19 @@ Or if you prefer pip:
 pip install .
 ```
 
-## Usage
+### Option 2: Use Docker
 
-The `offload` command-line tool provides several options to customize how your media files are processed:
-
-### Basic Syntax
+You can build and use `offload` as a Docker image, which includes all dependencies and eliminates the need to install system prerequisites:
 
 ```bash
-offload -s <source_directory> -d <destination_directory> [OPTIONS]
+docker build -t offload .
 ```
+
+The Docker image uses a multi-stage build with a distroless base image for minimal size (~119MB). All dependencies, including `pillow-heif` and `exiftool`, are included in the image.
+
+## Usage
+
+The `offload` command-line tool provides several options to customize how your media files are processed. You can use it either directly from the command line (if installed from source) or via Docker.
 
 ### Options
 
@@ -82,7 +100,17 @@ offload -s <source_directory> -d <destination_directory> [OPTIONS]
   - `ERROR`: Error messages only
   - `CRITICAL`: Critical errors only
 
-### Examples
+### Option 1: Using the Command-Line Tool
+
+If you installed `offload` from source code, you can use it directly:
+
+#### Basic Syntax
+
+```bash
+offload -s <source_directory> -d <destination_directory> [OPTIONS]
+```
+
+#### Examples
 
 Copy all photos and videos from a source directory to a destination:
 
@@ -100,6 +128,36 @@ Process videos with debug logging:
 
 ```bash
 offload -s /path/to/videos -d /path/to/backup --media-type videos --log-level DEBUG
+```
+
+### Option 2: Using Docker
+
+If you're using the Docker image, mount your source and destination directories as volumes:
+
+#### Basic Syntax
+
+```bash
+docker run --rm -v <source_directory>:/source -v <destination_directory>:/dest offload -s /source -d /dest [OPTIONS]
+```
+
+#### Examples
+
+Copy all photos and videos from a source directory to a destination:
+
+```bash
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest offload -s /source -d /dest
+```
+
+Archive only photos into zip files:
+
+```bash
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest offload -s /source -d /dest --archive --media-type photos
+```
+
+Process videos with debug logging:
+
+```bash
+docker run --rm -v /path/to/videos:/source -v /path/to/backup:/dest offload -s /source -d /dest --media-type videos --log-level DEBUG
 ```
 
 ## Contributing
