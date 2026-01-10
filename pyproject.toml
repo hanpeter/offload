@@ -1,6 +1,6 @@
 [project]
 name = "offload"
-version = "0.0.0"
+version = "0.1.0"
 description = "CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files."
 authors = [
     {name = "Peter Han",email = "git@peterhan.ca"}
@@ -15,7 +15,6 @@ dependencies = [
     "pillow-heif (>=1.1.1,<2.0.0)",
     "pyexiftool (>=0.5.6,<0.6.0)",
 ]
-
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
