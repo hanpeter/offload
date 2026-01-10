@@ -69,7 +69,19 @@ pip install .
 
 ### Option 2: Use Docker
 
-You can build and use `offload` as a Docker image, which includes all dependencies and eliminates the need to install system prerequisites:
+Pre-built Docker images are available from GitHub Container Registry (GHCR) and are automatically built by GitHub Actions. You can pull and use the image directly:
+
+```bash
+docker pull ghcr.io/hanpeter/offload:latest
+```
+
+Or use a specific version tag:
+
+```bash
+docker pull ghcr.io/hanpeter/offload:v0.1.0
+```
+
+Alternatively, you can build the image locally:
 
 ```bash
 docker build -t offload .
@@ -133,12 +145,12 @@ offload -s /path/to/videos -d /path/to/backup --media-type videos --log-level DE
 
 ### Option 2: Using Docker
 
-If you're using the Docker image, mount your source and destination directories as volumes:
+If you're using the Docker image from GHCR, mount your source and destination directories as volumes:
 
 #### Basic Syntax
 
 ```bash
-docker run --rm -v <source_directory>:/source -v <destination_directory>:/dest offload -s /source -d /dest [OPTIONS]
+docker run --rm -v <source_directory>:/source -v <destination_directory>:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest [OPTIONS]
 ```
 
 #### Examples
@@ -146,20 +158,22 @@ docker run --rm -v <source_directory>:/source -v <destination_directory>:/dest o
 Copy all photos and videos from a source directory to a destination:
 
 ```bash
-docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest offload -s /source -d /dest
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest
 ```
 
 Archive only photos into zip files:
 
 ```bash
-docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest offload -s /source -d /dest --archive --media-type photos
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest --archive --media-type photos
 ```
 
 Process videos with debug logging:
 
 ```bash
-docker run --rm -v /path/to/videos:/source -v /path/to/backup:/dest offload -s /source -d /dest --media-type videos --log-level DEBUG
+docker run --rm -v /path/to/videos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest --media-type videos --log-level DEBUG
 ```
+
+**Note:** If you built the image locally with `docker build -t offload .`, you can use `offload` instead of `ghcr.io/hanpeter/offload:latest` in the examples above.
 
 ## Contributing
 
