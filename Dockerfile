@@ -1,7 +1,7 @@
-FROM python:3.14-alpine AS builder
+FROM python:3.11-slim AS builder
 
 # Install build dependencies
-RUN apk update && apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     libheif-dev \
     exiftool
@@ -29,22 +29,20 @@ COPY README.md ./
 # Install application
 RUN poetry install --without=dev --no-interaction
 
-FROM python:3.14-alpine AS runtime
+# Fix Python symlinks in venv to point to distroless Python 3.11
+RUN rm -f /offload/.venv/bin/python* && \
+    ln -s /usr/bin/python /offload/.venv/bin/python && \
+    ln -s /usr/bin/python /offload/.venv/bin/python3 && \
+    ln -s /usr/bin/python /offload/.venv/bin/python3.11
 
-# Install runtime dependencies only
-RUN apk add --no-cache \
-    libheif \
-    exiftool
+FROM gcr.io/distroless/python3-debian12 AS runtime
 
 # Set working directory
 WORKDIR /offload
 
 # Copy virtual environment from builder
-COPY --from=builder /offload/.venv ./.venv
-COPY offload/ ./offload/
-
-# Set PATH to use virtual environment
-ENV PATH="/offload/.venv/bin:$PATH"
+COPY --from=builder /offload/.venv /offload/.venv
+COPY --from=builder /offload/offload /offload/offload
 
 # Set entrypoint
-ENTRYPOINT ["offload"]
+ENTRYPOINT ["/offload/.venv/bin/offload"]
