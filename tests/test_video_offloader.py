@@ -497,6 +497,117 @@ class TestVideoOffloader:
                 assert metadata.camera_model == 'HERO9'
                 assert metadata.location is not None
 
+    def test_extract_metadata_use_file_date_when_metadata_missing(self, app):
+        """Test _extract_metadata uses file creation date when metadata date is missing and use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            video_path = tmp_path / "video.mp4"
+            self.create_test_video_file(video_path)
+
+            # Mock exiftool to return no date
+            with patch('exiftool.ExifToolHelper') as mock_exiftool_class:
+                mock_exiftool = MagicMock()
+                mock_exiftool.__enter__ = MagicMock(return_value=mock_exiftool)
+                mock_exiftool.__exit__ = MagicMock(return_value=None)
+                mock_exiftool.get_metadata = MagicMock(return_value=[{}])
+                mock_exiftool_class.return_value = mock_exiftool
+
+                # Extract metadata with use_file_date - should have file date
+                metadata_with_file_date = app._extract_metadata(video_path, use_file_date=True)
+                assert metadata_with_file_date.date_taken is not None
+                assert isinstance(metadata_with_file_date.date_taken, datetime)
+                assert metadata_with_file_date.date_taken.date() == datetime.now().date() # Should be today
+
+    def test_extract_metadata_use_file_date_does_not_override_metadata(self, app):
+        """Test _extract_metadata does not override metadata date when use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            video_path = tmp_path / "video.mp4"
+            self.create_test_video_file(video_path)
+
+            mock_metadata = {
+                'QuickTime:CreationDate': '2023:05:15 14:30:00',
+                'Make': 'GoPro'
+            }
+
+            with patch('exiftool.ExifToolHelper') as mock_exiftool_class:
+                mock_exiftool = MagicMock()
+                mock_exiftool.__enter__ = MagicMock(return_value=mock_exiftool)
+                mock_exiftool.__exit__ = MagicMock(return_value=None)
+                mock_exiftool.get_metadata = MagicMock(return_value=[mock_metadata])
+                mock_exiftool_class.return_value = mock_exiftool
+
+                # Extract metadata with use_file_date=True
+                metadata = app._extract_metadata(video_path, use_file_date=True)
+                # Should use metadata date, not file date
+                assert metadata.date_taken is not None
+                assert metadata.date_taken.year == 2023
+                assert metadata.date_taken.month == 5
+                assert metadata.date_taken.day == 15
+
+    def test_get_file_creation_date_fallback_to_mtime(self, app):
+        """Test _get_file_creation_date falls back to st_mtime when st_birthtime is not available."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            video_path = tmp_path / "video.mp4"
+            self.create_test_video_file(video_path)
+
+            # Mock stat to not have st_birthtime (simulate Linux/Windows systems)
+            original_stat = video_path.stat()
+            # Create a mock stat object without st_birthtime attribute
+            class MockStat:
+                def __init__(self, original_stat):
+                    self.st_mtime = original_stat.st_mtime
+                    # Copy other common stat attributes
+                    for attr in ['st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime']:
+                        if hasattr(original_stat, attr):
+                            setattr(self, attr, getattr(original_stat, attr))
+                # Explicitly don't have st_birthtime
+                def __hasattr__(self, name):
+                    if name == 'st_birthtime':
+                        return False
+                    return hasattr(self, name)
+
+            mock_stat = MockStat(original_stat)
+
+            with patch.object(Path, 'stat', return_value=mock_stat):
+                date = VideoOffloader._get_file_creation_date(video_path)
+                assert date is not None
+                assert isinstance(date, datetime)
+                # Should use st_mtime
+                assert date == datetime.fromtimestamp(original_stat.st_mtime)
+
+    def test_get_file_creation_date_handles_oserror(self, app):
+        """Test _get_file_creation_date handles OSError gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            video_path = tmp_path / "video.mp4"
+            self.create_test_video_file(video_path)
+
+            # Mock stat to raise OSError
+            with patch.object(Path, 'stat', side_effect=OSError("File not found")):
+                date = VideoOffloader._get_file_creation_date(video_path)
+                assert date is None
+
+    def test_get_file_creation_date_handles_valueerror(self, app):
+        """Test _get_file_creation_date handles ValueError gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            video_path = tmp_path / "video.mp4"
+            self.create_test_video_file(video_path)
+
+            # Mock stat to return invalid timestamp
+            mock_stat = type('MockStat', (), {
+                'st_birthtime': -1,  # Invalid timestamp that will cause ValueError
+            })()
+
+            with patch.object(Path, 'stat', return_value=mock_stat):
+                # Mock fromtimestamp to raise ValueError
+                with patch('offload.video_offloader.datetime') as mock_datetime:
+                    mock_datetime.fromtimestamp.side_effect = ValueError("Invalid timestamp")
+                    date = VideoOffloader._get_file_creation_date(video_path)
+                    assert date is None
+
     def test_extract_metadata_exiftool_error(self, app):
         """Test _extract_metadata handles exiftool errors gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -677,7 +788,7 @@ class TestVideoOffloader:
             (tmp_path / "video.mkv").write_bytes(b"fake video")
 
             with patch.object(app, '_extract_metadata') as mock_extract:
-                def mock_extract_side_effect(file_path):
+                def mock_extract_side_effect(file_path, use_file_date=False):
                     return VideoMetadata(path=file_path)
                 mock_extract.side_effect = mock_extract_side_effect
 
@@ -1027,7 +1138,7 @@ class TestVideoOffloader:
                     VideoMetadata(path=video2, date_taken=datetime(2023, 5, 20)),
                 ]
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 # Check directory structure
                 assert (dest_dir / "year=2023" / "month=05").exists()
@@ -1048,7 +1159,7 @@ class TestVideoOffloader:
                     path=video, date_taken=datetime(2023, 5, 15)
                 )
 
-                app.offload_videos(source_dir, dest_dir, to_archive=True)
+                app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
 
                 # Check zip file exists
                 assert (dest_dir / "year=2023" / "month=05" / "videos.zip").exists()
@@ -1065,7 +1176,7 @@ class TestVideoOffloader:
             with patch.object(app, '_extract_metadata') as mock_extract:
                 mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 # Check unknown directory
                 assert (dest_dir / "unknown").exists()
@@ -1087,7 +1198,7 @@ class TestVideoOffloader:
                     VideoMetadata(path=video2, date_taken=datetime(2023, 6, 10)),
                 ]
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 assert (dest_dir / "year=2023" / "month=05").exists()
                 assert (dest_dir / "year=2023" / "month=06").exists()
@@ -1111,8 +1222,150 @@ class TestVideoOffloader:
                     # Return a bucket with invalid format
                     mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
 
-                    app.offload_videos(source_dir, dest_dir, to_archive=False)
+                    app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                     # Should save to unknown directory
                     assert (dest_dir / "unknown").exists()
                     assert (dest_dir / "unknown" / "video.mp4").exists()
+
+    def test_offload_videos_unknown_date_archive_mode(self, app):
+        """Test offload_videos archives videos without dates to unknown directory when keep_unknown=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            with patch.object(app, '_extract_metadata') as mock_extract:
+                mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
+
+                app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
+
+                # Check unknown directory has zip file
+                assert (dest_dir / "unknown").exists()
+                assert (dest_dir / "unknown" / "videos.zip").exists()
+
+    def test_offload_videos_invalid_format_archive_mode(self, app):
+        """Test offload_videos archives videos with invalid year-month format to unknown directory when keep_unknown=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            # Mock bucket_videos to return an invalid year-month format
+            with patch.object(app, 'read_videos') as mock_read:
+                mock_read.return_value = [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]
+
+                with patch.object(app, 'bucket_videos') as mock_bucket:
+                    # Return a bucket with invalid format
+                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+
+                    app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
+
+                    # Should save to unknown directory as zip
+                    assert (dest_dir / "unknown").exists()
+                    assert (dest_dir / "unknown" / "videos.zip").exists()
+
+    def test_offload_videos_skip_unknown_date(self, app):
+        """Test offload_videos skips videos without dates when keep_unknown=False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            with patch.object(app, '_extract_metadata') as mock_extract:
+                mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
+
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
+
+                # Check unknown directory does NOT exist
+                assert not (dest_dir / "unknown").exists()
+                # Video should not be copied anywhere
+                assert not (dest_dir / "video.mp4").exists()
+
+    def test_offload_videos_skip_invalid_format(self, app):
+        """Test offload_videos skips videos with invalid year-month format when keep_unknown=False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            # Mock bucket_videos to return an invalid year-month format
+            with patch.object(app, 'read_videos') as mock_read:
+                mock_read.return_value = [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]
+
+                with patch.object(app, 'bucket_videos') as mock_bucket:
+                    # Return a bucket with invalid format
+                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+
+                    app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
+
+                    # Should NOT save to unknown directory
+                    assert not (dest_dir / "unknown").exists()
+                    # Video should not be copied anywhere
+                    assert not (dest_dir / "video.mp4").exists()
+
+    def test_offload_videos_use_file_date(self, app):
+        """Test offload_videos uses file creation date when metadata date is missing and use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+            # Get the actual file creation date
+            file_date = VideoOffloader._get_file_creation_date(video)
+            assert file_date is not None
+
+            # Mock exiftool to return no date
+            with patch('exiftool.ExifToolHelper') as mock_exiftool_class:
+                mock_exiftool = MagicMock()
+                mock_exiftool.__enter__ = MagicMock(return_value=mock_exiftool)
+                mock_exiftool.__exit__ = MagicMock(return_value=None)
+                mock_exiftool.get_metadata = MagicMock(return_value=[{}])
+                mock_exiftool_class.return_value = mock_exiftool
+
+                # Test offload_videos with use_file_date
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True, use_file_date=True)
+
+                # Should be organized by file date, not saved to unknown
+                year = file_date.year
+                month = file_date.month
+                assert (dest_dir / f"year={year}" / f"month={month:02d}").exists()
+                assert not (dest_dir / "unknown").exists()
+
+    def test_offload_videos_use_file_date(self, app):
+        """Test offload_videos uses file creation date when metadata date is missing and use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+            # Get the actual file creation date
+            file_date = VideoOffloader._get_file_creation_date(video)
+            assert file_date is not None
+
+            # Mock exiftool to return no date
+            with patch('exiftool.ExifToolHelper') as mock_exiftool_class:
+                mock_exiftool = MagicMock()
+                mock_exiftool.__enter__ = MagicMock(return_value=mock_exiftool)
+                mock_exiftool.__exit__ = MagicMock(return_value=None)
+                mock_exiftool.get_metadata = MagicMock(return_value=[{}])
+                mock_exiftool_class.return_value = mock_exiftool
+
+                # Test offload_videos with use_file_date
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True, use_file_date=True)
+
+                # Should be organized by file date, not saved to unknown
+                year = file_date.year
+                month = file_date.month
+                assert (dest_dir / f"year={year}" / f"month={month:02d}").exists()
+                assert not (dest_dir / "unknown").exists()
