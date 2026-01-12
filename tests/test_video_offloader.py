@@ -1027,7 +1027,7 @@ class TestVideoOffloader:
                     VideoMetadata(path=video2, date_taken=datetime(2023, 5, 20)),
                 ]
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 # Check directory structure
                 assert (dest_dir / "year=2023" / "month=05").exists()
@@ -1048,7 +1048,7 @@ class TestVideoOffloader:
                     path=video, date_taken=datetime(2023, 5, 15)
                 )
 
-                app.offload_videos(source_dir, dest_dir, to_archive=True)
+                app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
 
                 # Check zip file exists
                 assert (dest_dir / "year=2023" / "month=05" / "videos.zip").exists()
@@ -1065,7 +1065,7 @@ class TestVideoOffloader:
             with patch.object(app, '_extract_metadata') as mock_extract:
                 mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 # Check unknown directory
                 assert (dest_dir / "unknown").exists()
@@ -1087,7 +1087,7 @@ class TestVideoOffloader:
                     VideoMetadata(path=video2, date_taken=datetime(2023, 6, 10)),
                 ]
 
-                app.offload_videos(source_dir, dest_dir, to_archive=False)
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                 assert (dest_dir / "year=2023" / "month=05").exists()
                 assert (dest_dir / "year=2023" / "month=06").exists()
@@ -1111,8 +1111,92 @@ class TestVideoOffloader:
                     # Return a bucket with invalid format
                     mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
 
-                    app.offload_videos(source_dir, dest_dir, to_archive=False)
+                    app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
                     # Should save to unknown directory
                     assert (dest_dir / "unknown").exists()
                     assert (dest_dir / "unknown" / "video.mp4").exists()
+
+    def test_offload_videos_unknown_date_archive_mode(self, app):
+        """Test offload_videos archives videos without dates to unknown directory when keep_unknown=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            with patch.object(app, '_extract_metadata') as mock_extract:
+                mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
+
+                app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
+
+                # Check unknown directory has zip file
+                assert (dest_dir / "unknown").exists()
+                assert (dest_dir / "unknown" / "videos.zip").exists()
+
+    def test_offload_videos_invalid_format_archive_mode(self, app):
+        """Test offload_videos archives videos with invalid year-month format to unknown directory when keep_unknown=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            # Mock bucket_videos to return an invalid year-month format
+            with patch.object(app, 'read_videos') as mock_read:
+                mock_read.return_value = [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]
+
+                with patch.object(app, 'bucket_videos') as mock_bucket:
+                    # Return a bucket with invalid format
+                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+
+                    app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
+
+                    # Should save to unknown directory as zip
+                    assert (dest_dir / "unknown").exists()
+                    assert (dest_dir / "unknown" / "videos.zip").exists()
+
+    def test_offload_videos_skip_unknown_date(self, app):
+        """Test offload_videos skips videos without dates when keep_unknown=False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            with patch.object(app, '_extract_metadata') as mock_extract:
+                mock_extract.return_value = VideoMetadata(path=video, date_taken=None)
+
+                app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
+
+                # Check unknown directory does NOT exist
+                assert not (dest_dir / "unknown").exists()
+                # Video should not be copied anywhere
+                assert not (dest_dir / "video.mp4").exists()
+
+    def test_offload_videos_skip_invalid_format(self, app):
+        """Test offload_videos skips videos with invalid year-month format when keep_unknown=False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            video = self.create_test_video_file(source_dir / "video.mp4")
+
+            # Mock bucket_videos to return an invalid year-month format
+            with patch.object(app, 'read_videos') as mock_read:
+                mock_read.return_value = [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]
+
+                with patch.object(app, 'bucket_videos') as mock_bucket:
+                    # Return a bucket with invalid format
+                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+
+                    app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
+
+                    # Should NOT save to unknown directory
+                    assert not (dest_dir / "unknown").exists()
+                    # Video should not be copied anywhere
+                    assert not (dest_dir / "video.mp4").exists()

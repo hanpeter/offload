@@ -36,7 +36,8 @@ class TestCLI:
                 mock_app.offload_photos.assert_called_once_with(
                     str(source_dir),
                     str(dest_dir),
-                    to_archive=False
+                    to_archive=False,
+                    keep_unknown=True
                 )
 
     def test_main_with_archive_flag(self):
@@ -62,7 +63,8 @@ class TestCLI:
                 mock_app.offload_photos.assert_called_once_with(
                     str(source_dir),
                     str(dest_dir),
-                    to_archive=True
+                    to_archive=True,
+                    keep_unknown=True
                 )
 
     def test_main_with_short_archive_flag(self):
@@ -88,7 +90,8 @@ class TestCLI:
                 mock_app.offload_photos.assert_called_once_with(
                     str(source_dir),
                     str(dest_dir),
-                    to_archive=True
+                    to_archive=True,
+                    keep_unknown=True
                 )
 
     def test_main_with_log_level_debug(self):
@@ -399,3 +402,39 @@ class TestCLI:
                 assert len(call_args[0]) == 1
                 assert isinstance(call_args[0][0], logging.Logger)
                 assert call_args[0][0].name == 'offload'
+
+    def test_main_with_skip_unknown_flag(self):
+        """Test that --skip-unknown flag is passed to both PhotoOffloader and VideoOffloader."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            with patch('offload.cli.PhotoOffloader') as mock_photo_app_class:
+                with patch('offload.cli.VideoOffloader') as mock_video_app_class:
+                    mock_photo_app = MagicMock()
+                    mock_video_app = MagicMock()
+                    mock_photo_app_class.return_value = mock_photo_app
+                    mock_video_app_class.return_value = mock_video_app
+
+                    result = runner.invoke(main, [
+                        '--source', str(source_dir),
+                        '--destination', str(dest_dir),
+                        '--skip-unknown'
+                    ])
+
+                    assert result.exit_code == 0
+                    mock_photo_app.offload_photos.assert_called_once_with(
+                        str(source_dir),
+                        str(dest_dir),
+                        to_archive=False,
+                        keep_unknown=False
+                    )
+                    mock_video_app.offload_videos.assert_called_once_with(
+                        str(source_dir),
+                        str(dest_dir),
+                        to_archive=False,
+                        keep_unknown=False
+                    )
