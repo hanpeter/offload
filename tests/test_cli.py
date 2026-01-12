@@ -37,7 +37,8 @@ class TestCLI:
                     str(source_dir),
                     str(dest_dir),
                     to_archive=False,
-                    keep_unknown=True
+                    keep_unknown=True,
+                    use_file_date=False
                 )
 
     def test_main_with_archive_flag(self):
@@ -64,7 +65,8 @@ class TestCLI:
                     str(source_dir),
                     str(dest_dir),
                     to_archive=True,
-                    keep_unknown=True
+                    keep_unknown=True,
+                    use_file_date=False
                 )
 
     def test_main_with_short_archive_flag(self):
@@ -91,7 +93,8 @@ class TestCLI:
                     str(source_dir),
                     str(dest_dir),
                     to_archive=True,
-                    keep_unknown=True
+                    keep_unknown=True,
+                    use_file_date=False
                 )
 
     def test_main_with_log_level_debug(self):
@@ -430,11 +433,51 @@ class TestCLI:
                         str(source_dir),
                         str(dest_dir),
                         to_archive=False,
-                        keep_unknown=False
+                        keep_unknown=False,
+                        use_file_date=False
                     )
                     mock_video_app.offload_videos.assert_called_once_with(
                         str(source_dir),
                         str(dest_dir),
                         to_archive=False,
-                        keep_unknown=False
+                        keep_unknown=False,
+                        use_file_date=False
+                    )
+
+    def test_main_with_use_file_date_flag(self):
+        """Test that --use-file-date flag is passed to both PhotoOffloader and VideoOffloader."""
+        runner = CliRunner()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            with patch('offload.cli.PhotoOffloader') as mock_photo_app_class:
+                with patch('offload.cli.VideoOffloader') as mock_video_app_class:
+                    mock_photo_app = MagicMock()
+                    mock_video_app = MagicMock()
+                    mock_photo_app_class.return_value = mock_photo_app
+                    mock_video_app_class.return_value = mock_video_app
+
+                    result = runner.invoke(main, [
+                        '--source', str(source_dir),
+                        '--destination', str(dest_dir),
+                        '--use-file-date'
+                    ])
+
+                    assert result.exit_code == 0
+                    mock_photo_app.offload_photos.assert_called_once_with(
+                        str(source_dir),
+                        str(dest_dir),
+                        to_archive=False,
+                        keep_unknown=True,
+                        use_file_date=True
+                    )
+                    mock_video_app.offload_videos.assert_called_once_with(
+                        str(source_dir),
+                        str(dest_dir),
+                        to_archive=False,
+                        keep_unknown=True,
+                        use_file_date=True
                     )

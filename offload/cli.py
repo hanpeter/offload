@@ -16,7 +16,8 @@ CONTEXT_SETTINGS = {
 @click.option('--media-type', type=click.Choice(['photos', 'videos', 'both']), default='both', help='Type of media to offload: photos, videos, or both (default: both)')
 @click.option('--log-level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']), default='INFO', help='Set the logging level')
 @click.option('--skip-unknown', is_flag=True, default=False, help='Skip files with unknown bucket key and/or invalid year-month separators instead of saving them to unknown directory')
-def main(source, destination, archive, media_type, log_level, skip_unknown):
+@click.option('--use-file-date', is_flag=True, default=False, help='Use file creation date as fallback when EXIF/metadata date is not available')
+def main(source, destination, archive, media_type, log_level, skip_unknown, use_file_date):
     # Create a basic logger
     logger = logging.getLogger('offload')
 
@@ -32,12 +33,12 @@ def main(source, destination, archive, media_type, log_level, skip_unknown):
     # Process photos if requested
     if media_type in ['photos', 'both']:
         photo_app = PhotoOffloader(logger)
-        photo_app.offload_photos(source, destination, to_archive=archive, keep_unknown=not skip_unknown)
+        photo_app.offload_photos(source, destination, to_archive=archive, keep_unknown=not skip_unknown, use_file_date=use_file_date)
 
     # Process videos if requested
     if media_type in ['videos', 'both']:
         video_app = VideoOffloader(logger)
-        video_app.offload_videos(source, destination, to_archive=archive, keep_unknown=not skip_unknown)
+        video_app.offload_videos(source, destination, to_archive=archive, keep_unknown=not skip_unknown, use_file_date=use_file_date)
 
 if __name__ == '__main__':  # pragma: no cover
     # Not testing the __main__ block as this is a built-in Python feature

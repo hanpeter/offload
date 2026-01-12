@@ -151,8 +151,27 @@ class PhotoOffloader:
 
         return (camera_make, camera_model, software)
 
-    def _extract_metadata(self, file_path: Path) -> PhotoMetadata:
-        """Extract metadata from a photo file."""
+    @staticmethod
+    def _get_file_creation_date(file_path: Path) -> Optional[datetime]:
+        """Get file creation date from filesystem metadata."""
+        try:
+            stat = file_path.stat()
+            # Try st_birthtime (available on macOS and some BSD systems)
+            if hasattr(stat, 'st_birthtime'):
+                return datetime.fromtimestamp(stat.st_birthtime)
+            # Fallback to st_mtime (modification time) on systems without birthtime
+            return datetime.fromtimestamp(stat.st_mtime)
+        except (OSError, ValueError) as e:
+            return None
+
+    def _extract_metadata(self, file_path: Path, use_file_date: bool = False) -> PhotoMetadata:
+        """
+        Extract metadata from a photo file.
+
+        Args:
+            file_path: Path to the photo file
+            use_file_date: If True and EXIF date is not available, use file creation date as fallback
+        """
         date_taken = None
         location = None
         camera_make = None
@@ -176,6 +195,12 @@ class PhotoOffloader:
             # If we can't read the image or extract metadata, continue with None values
             self.logger.warning("Failed to extract metadata from %s: %s", file_path, e)
 
+        # Use file creation date as fallback if EXIF date is not available
+        if date_taken is None and use_file_date:
+            date_taken = PhotoOffloader._get_file_creation_date(file_path)
+            if date_taken is not None:
+                self.logger.debug("Using file creation date for %s: %s", file_path, date_taken)
+
         return PhotoMetadata(
             path=file_path,
             date_taken=date_taken,
@@ -185,12 +210,13 @@ class PhotoOffloader:
             software=software
         )
 
-    def read_photos(self, source_dir: str | Path) -> list[PhotoMetadata]:
+    def read_photos(self, source_dir: str | Path, use_file_date: bool = False) -> list[PhotoMetadata]:
         """
         Read all photo files from the source directory and extract their metadata.
 
         Args:
             source_dir: Path to the directory where photos are stored
+            use_file_date: If True and EXIF date is not available, use file creation date as fallback
 
         Returns:
             List of PhotoMetadata objects containing path, date_taken, location,
@@ -206,7 +232,7 @@ class PhotoOffloader:
         photos = []
         for file_path in photos_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in PhotoOffloader.PHOTO_EXTENSIONS:
-                photo_metadata = self._extract_metadata(file_path)
+                photo_metadata = self._extract_metadata(file_path, use_file_date=use_file_date)
                 photos.append(photo_metadata)
 
         self.logger.info("Read photos from %s, found %d photo(s)", source_dir, len(photos))
@@ -377,7 +403,7 @@ class PhotoOffloader:
         else:
             self.copy_photos(photos, destination)
 
-    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True) -> None:
+    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True, use_file_date: bool = False) -> None:
         """
         Read photos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
@@ -388,9 +414,10 @@ class PhotoOffloader:
             to_archive: If True, archive photos into zip files instead of copying them
             keep_unknown: If True, save files with unknown bucket key and/or invalid year-month separators
                          to the unknown directory. If False, skip them with a log message.
+            use_file_date: If True and EXIF date is not available, use file creation date as fallback
         """
         self.logger.debug("Offloading photos from %s to %s", source_dir, destination_dir)
-        photos = self.read_photos(source_dir)
+        photos = self.read_photos(source_dir, use_file_date=use_file_date)
 
         # Bucket photos by year-month
         buckets = self.bucket_photos(photos, GroupBy.YEAR_MONTH)

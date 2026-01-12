@@ -259,6 +259,109 @@ class TestPhotoOffloader:
             assert metadata.path == photo_path
             # The code path through lines 145-152 should be executed
 
+    def test_extract_metadata_use_file_date_when_exif_missing(self, app):
+        """Test _extract_metadata uses file creation date when EXIF date is missing and use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+            # Create image without EXIF date
+            self.create_test_image(photo_path)
+
+            # Extract metadata with use_file_date - should have file date
+            metadata = app._extract_metadata(photo_path, use_file_date=True)
+            assert metadata.date_taken is not None
+            assert isinstance(metadata.date_taken, datetime)
+            assert metadata.date_taken.date() == datetime.now().date() # Should be today
+
+    def test_extract_metadata_use_file_date_does_not_override_exif(self, app):
+        """Test _extract_metadata does not override EXIF date when use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+
+            # Create base image
+            self.create_test_image(photo_path)
+
+            # Add EXIF date to the image
+            img = Image.open(photo_path)
+            exif = img.getexif()
+            from PIL.ExifTags import TAGS
+            tag_map = {v: k for k, v in TAGS.items()}
+            if 'DateTimeOriginal' in tag_map:
+                exif[tag_map['DateTimeOriginal']] = '2023:05:15 14:30:00'
+            img.save(photo_path, exif=exif)
+
+            # Extract metadata with use_file_date=True
+            metadata = app._extract_metadata(photo_path, use_file_date=True)
+            # Should use EXIF date, not file date
+            assert metadata.date_taken is not None
+            assert metadata.date_taken.year == 2023
+            assert metadata.date_taken.month == 5
+            assert metadata.date_taken.day == 15
+
+    def test_get_file_creation_date_fallback_to_mtime(self, app):
+        """Test _get_file_creation_date falls back to st_mtime when st_birthtime is not available."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+            self.create_test_image(photo_path)
+
+            # Mock stat to not have st_birthtime (simulate Linux/Windows systems)
+            original_stat = photo_path.stat()
+            # Create a mock stat object without st_birthtime attribute
+            class MockStat:
+                def __init__(self, original_stat):
+                    self.st_mtime = original_stat.st_mtime
+                    # Copy other common stat attributes
+                    for attr in ['st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime']:
+                        if hasattr(original_stat, attr):
+                            setattr(self, attr, getattr(original_stat, attr))
+                # Explicitly don't have st_birthtime
+                def __hasattr__(self, name):
+                    if name == 'st_birthtime':
+                        return False
+                    return hasattr(self, name)
+
+            mock_stat = MockStat(original_stat)
+
+            with patch.object(Path, 'stat', return_value=mock_stat):
+                date = PhotoOffloader._get_file_creation_date(photo_path)
+                assert date is not None
+                assert isinstance(date, datetime)
+                # Should use st_mtime
+                assert date == datetime.fromtimestamp(original_stat.st_mtime)
+
+    def test_get_file_creation_date_handles_oserror(self, app):
+        """Test _get_file_creation_date handles OSError gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+            self.create_test_image(photo_path)
+
+            # Mock stat to raise OSError
+            with patch.object(Path, 'stat', side_effect=OSError("File not found")):
+                date = PhotoOffloader._get_file_creation_date(photo_path)
+                assert date is None
+
+    def test_get_file_creation_date_handles_valueerror(self, app):
+        """Test _get_file_creation_date handles ValueError gracefully."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            photo_path = tmp_path / "photo.jpg"
+            self.create_test_image(photo_path)
+
+            # Mock stat to return invalid timestamp
+            mock_stat = type('MockStat', (), {
+                'st_birthtime': -1,  # Invalid timestamp that will cause ValueError
+            })()
+
+            with patch.object(Path, 'stat', return_value=mock_stat):
+                # Mock fromtimestamp to raise ValueError
+                with patch('offload.photo_offloader.datetime') as mock_datetime:
+                    mock_datetime.fromtimestamp.side_effect = ValueError("Invalid timestamp")
+                    date = PhotoOffloader._get_file_creation_date(photo_path)
+                    assert date is None
+
     def test_read_photos_directory_not_exists(self, app):
         """Test read_photos with non-existent directory."""
         with pytest.raises(ValueError, match="Directory does not exist"):
@@ -824,3 +927,35 @@ class TestPhotoOffloader:
                     assert not (dest_dir / "unknown").exists()
                     # Photo should not be copied anywhere
                     assert not (dest_dir / "photo.jpg").exists()
+
+    def test_offload_photos_use_file_date(self, app):
+        """Test offload_photos uses file creation date when EXIF date is missing and use_file_date=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_dir = Path(tmpdir) / "source"
+            dest_dir = Path(tmpdir) / "dest"
+            source_dir.mkdir()
+
+            photo = self.create_test_image(source_dir / "photo.jpg")
+            # Get the actual file creation date
+            file_date = PhotoOffloader._get_file_creation_date(photo)
+            assert file_date is not None
+
+            # Extract metadata without use_file_date - should have no date
+            metadata_no_file_date = app._extract_metadata(photo, use_file_date=False)
+            assert metadata_no_file_date.date_taken is None
+
+            # Extract metadata with use_file_date - should have file date
+            metadata_with_file_date = app._extract_metadata(photo, use_file_date=True)
+            assert metadata_with_file_date.date_taken is not None
+            assert metadata_with_file_date.date_taken.year == file_date.year
+            assert metadata_with_file_date.date_taken.month == file_date.month
+            assert metadata_with_file_date.date_taken.day == file_date.day
+
+            # Test offload_photos with use_file_date
+            app.offload_photos(source_dir, dest_dir, to_archive=False, keep_unknown=True, use_file_date=True)
+
+            # Should be organized by file date, not saved to unknown
+            year = file_date.year
+            month = file_date.month
+            assert (dest_dir / f"year={year}" / f"month={month:02d}").exists()
+            assert not (dest_dir / "unknown").exists()
