@@ -15,7 +15,8 @@ CONTEXT_SETTINGS = {
 @click.option('-a', '--archive', is_flag=True, default=False, help='Archive photos/videos into zip files instead of copying them')
 @click.option('--media-type', type=click.Choice(['photos', 'videos', 'both']), default='both', help='Type of media to offload: photos, videos, or both (default: both)')
 @click.option('--log-level', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']), default='INFO', help='Set the logging level')
-def main(source, destination, archive, media_type, log_level):
+@click.option('--skip-unknown', is_flag=True, default=False, help='Skip files with unknown bucket key and/or invalid year-month separators instead of saving them to unknown directory')
+def main(source, destination, archive, media_type, log_level, skip_unknown):
     # Create a basic logger
     logger = logging.getLogger('offload')
 
@@ -31,12 +32,12 @@ def main(source, destination, archive, media_type, log_level):
     # Process photos if requested
     if media_type in ['photos', 'both']:
         photo_app = PhotoOffloader(logger)
-        photo_app.offload_photos(source, destination, to_archive=archive)
+        photo_app.offload_photos(source, destination, to_archive=archive, keep_unknown=not skip_unknown)
 
     # Process videos if requested
     if media_type in ['videos', 'both']:
         video_app = VideoOffloader(logger)
-        video_app.offload_videos(source, destination, to_archive=archive)
+        video_app.offload_videos(source, destination, to_archive=archive, keep_unknown=not skip_unknown)
 
 if __name__ == '__main__':  # pragma: no cover
     # Not testing the __main__ block as this is a built-in Python feature

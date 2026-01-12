@@ -486,7 +486,7 @@ class VideoOffloader:
         else:
             self.copy_videos(videos, destination)
 
-    def offload_videos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False) -> None:
+    def offload_videos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True) -> None:
         """
         Read videos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
@@ -495,6 +495,8 @@ class VideoOffloader:
             source_dir: Path to the source directory containing videos
             destination_dir: Path to the destination directory
             to_archive: If True, archive videos into zip files instead of copying them
+            keep_unknown: If True, save files with unknown bucket key and/or invalid year-month separators
+                         to the unknown directory. If False, skip them with a log message.
         """
         self.logger.debug("Offloading videos from %s to %s", source_dir, destination_dir)
         videos = self.read_videos(source_dir)
@@ -510,11 +512,16 @@ class VideoOffloader:
         invalid_format_count = 0
         for year_month, bucket_videos in buckets.items():
             if year_month == UNKNOWN_BUCKET_KEY:
-                # Save videos without date information to unknown directory
-                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 unknown_count += len(bucket_videos)
-                self.logger.info("Processing %d video(s) without date information", len(bucket_videos))
-                self._save_videos(bucket_videos, unknown_dir, to_archive)
+                if keep_unknown:
+                    # Save videos without date information to unknown directory
+                    unknown_dir = dest_path / UNKNOWN_DIRECTORY
+                    self.logger.info("Processing %d video(s) without date information", len(bucket_videos))
+                    self._save_videos(bucket_videos, unknown_dir, to_archive)
+                else:
+                    # Skip videos without date information
+                    for video in bucket_videos:
+                        self.logger.info("Skipping video %s: missing date information", video.path)
                 continue
 
             # Parse year-month string (format: "YYYY-MM")
@@ -523,11 +530,16 @@ class VideoOffloader:
                 year = int(year)
                 month = int(month)
             except ValueError:
-                # Save videos with invalid year-month format to unknown directory
-                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 invalid_format_count += len(bucket_videos)
-                self.logger.warning("Processing %d video(s) with invalid year-month format (%s) to unknown directory", len(bucket_videos), year_month)
-                self._save_videos(bucket_videos, unknown_dir, to_archive)
+                if keep_unknown:
+                    # Save videos with invalid year-month format to unknown directory
+                    unknown_dir = dest_path / UNKNOWN_DIRECTORY
+                    self.logger.info("Processing %d video(s) with invalid year-month format (%s) to unknown directory", len(bucket_videos), year_month)
+                    self._save_videos(bucket_videos, unknown_dir, to_archive)
+                else:
+                    # Skip videos with invalid year-month format
+                    for video in bucket_videos:
+                        self.logger.info("Skipping video %s: invalid year-month format (%s)", video.path, year_month)
                 continue
 
             # Create directory structure: year=X/month=YY (HDFS format with padded month)
@@ -535,9 +547,15 @@ class VideoOffloader:
             self.logger.info("Processing %d video(s) for %s", len(bucket_videos), year_month)
             self._save_videos(bucket_videos, month_dir, to_archive)
 
-        # Log warnings for videos that were saved to unknown directory
+        # Log photos that were saved to unknown directory or skipped
         if unknown_count > 0:
-            self.logger.warning("%d video(s) were saved to unknown directory due to missing date information", unknown_count)
+            if keep_unknown:
+                self.logger.info("%d video(s) were saved to unknown directory due to missing date information", unknown_count)
+            else:
+                self.logger.info("%d video(s) were skipped due to missing date information", unknown_count)
         if invalid_format_count > 0:
-            self.logger.warning("%d video(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+            if keep_unknown:
+                self.logger.info("%d video(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+            else:
+                self.logger.info("%d video(s) were skipped due to invalid year-month format", invalid_format_count)
         self.logger.info("Offloaded videos from %s to %s", source_dir, destination_dir)

@@ -377,7 +377,7 @@ class PhotoOffloader:
         else:
             self.copy_photos(photos, destination)
 
-    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False) -> None:
+    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True) -> None:
         """
         Read photos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
@@ -386,6 +386,8 @@ class PhotoOffloader:
             source_dir: Path to the source directory containing photos
             destination_dir: Path to the destination directory
             to_archive: If True, archive photos into zip files instead of copying them
+            keep_unknown: If True, save files with unknown bucket key and/or invalid year-month separators
+                         to the unknown directory. If False, skip them with a log message.
         """
         self.logger.debug("Offloading photos from %s to %s", source_dir, destination_dir)
         photos = self.read_photos(source_dir)
@@ -401,11 +403,16 @@ class PhotoOffloader:
         invalid_format_count = 0
         for year_month, bucket_photos in buckets.items():
             if year_month == UNKNOWN_BUCKET_KEY:
-                # Save photos without date information to unknown directory
-                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 unknown_count += len(bucket_photos)
-                self.logger.info("Processing %d photo(s) without date information", len(bucket_photos))
-                self._save_photos(bucket_photos, unknown_dir, to_archive)
+                if keep_unknown:
+                    # Save photos without date information to unknown directory
+                    unknown_dir = dest_path / UNKNOWN_DIRECTORY
+                    self.logger.info("Processing %d photo(s) without date information", len(bucket_photos))
+                    self._save_photos(bucket_photos, unknown_dir, to_archive)
+                else:
+                    # Skip photos without date information
+                    for photo in bucket_photos:
+                        self.logger.info("Skipping photo %s: missing date information", photo.path)
                 continue
 
             # Parse year-month string (format: "YYYY-MM")
@@ -414,11 +421,16 @@ class PhotoOffloader:
                 year = int(year)
                 month = int(month)
             except ValueError:
-                # Save photos with invalid year-month format to unknown directory
-                unknown_dir = dest_path / UNKNOWN_DIRECTORY
                 invalid_format_count += len(bucket_photos)
-                self.logger.warning("Processing %d photo(s) with invalid year-month format (%s) to unknown directory", len(bucket_photos), year_month)
-                self._save_photos(bucket_photos, unknown_dir, to_archive)
+                if keep_unknown:
+                    # Save photos with invalid year-month format to unknown directory
+                    unknown_dir = dest_path / UNKNOWN_DIRECTORY
+                    self.logger.info("Processing %d photo(s) with invalid year-month format (%s) to unknown directory", len(bucket_photos), year_month)
+                    self._save_photos(bucket_photos, unknown_dir, to_archive)
+                else:
+                    # Skip photos with invalid year-month format
+                    for photo in bucket_photos:
+                        self.logger.info("Skipping photo %s: invalid year-month format (%s)", photo.path, year_month)
                 continue
 
             # Create directory structure: year=X/month=YY (HDFS format with padded month)
@@ -426,9 +438,15 @@ class PhotoOffloader:
             self.logger.info("Processing %d photo(s) for %s", len(bucket_photos), year_month)
             self._save_photos(bucket_photos, month_dir, to_archive)
 
-        # Log warnings for photos that were saved to unknown directory
+        # Log photos that were saved to unknown directory or skipped
         if unknown_count > 0:
-            self.logger.warning("%d photo(s) were saved to unknown directory due to missing date information", unknown_count)
+            if keep_unknown:
+                self.logger.info("%d photo(s) were saved to unknown directory due to missing date information", unknown_count)
+            else:
+                self.logger.info("%d photo(s) were skipped due to missing date information", unknown_count)
         if invalid_format_count > 0:
-            self.logger.warning("%d photo(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+            if keep_unknown:
+                self.logger.info("%d photo(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+            else:
+                self.logger.info("%d photo(s) were skipped due to invalid year-month format", invalid_format_count)
         self.logger.info("Offloaded photos from %s to %s", source_dir, destination_dir)
