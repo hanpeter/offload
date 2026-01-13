@@ -113,6 +113,10 @@ The `offload` command-line tool provides several options to customize how your m
   - `ERROR`: Error messages only
   - `CRITICAL`: Critical errors only
 
+- **`--skip-unknown`**: Skip files with unknown bucket key and/or invalid year-month separators instead of saving them to the unknown directory. By default, files that cannot be categorized are saved to an "unknown" directory.
+
+- **`--use-file-date`**: Use file creation date as fallback when EXIF/metadata date is not available. By default, files without valid EXIF/metadata dates are saved to the unknown directory (unless `--skip-unknown` is used).
+
 ### Option 1: Using the Command-Line Tool
 
 If you installed `offload` from source code, you can use it directly:
@@ -143,6 +147,18 @@ Process videos with debug logging:
 offload -s /path/to/videos -d /path/to/backup --media-type videos --log-level DEBUG
 ```
 
+Skip files that cannot be categorized instead of saving them to unknown directory:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup --skip-unknown
+```
+
+Use file creation date as fallback when EXIF metadata is missing:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup --use-file-date
+```
+
 ### Option 2: Using Docker
 
 If you're using the Docker image from GHCR, mount your source and destination directories as volumes:
@@ -171,6 +187,18 @@ Process videos with debug logging:
 
 ```bash
 docker run --rm -v /path/to/videos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest --media-type videos --log-level DEBUG
+```
+
+Skip files that cannot be categorized instead of saving them to unknown directory:
+
+```bash
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest --skip-unknown
+```
+
+Use file creation date as fallback when EXIF metadata is missing:
+
+```bash
+docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest ghcr.io/hanpeter/offload:latest -s /source -d /dest --use-file-date
 ```
 
 **Note:** If you built the image locally with `docker build -t offload .`, you can use `offload` instead of `ghcr.io/hanpeter/offload:latest` in the examples above.
