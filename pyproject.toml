@@ -1,6 +1,6 @@
 [project]
 name = "offload"
-version = "0.1.0"
+version = "0.2.0"
 description = "CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files."
 authors = [
     {name = "Peter Han",email = "git@peterhan.ca"}
