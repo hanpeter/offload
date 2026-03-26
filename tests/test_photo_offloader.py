@@ -146,6 +146,7 @@ class TestPhotoOffloader:
         # Mock EXIF data with GPS info
         mock_exif_data = MagicMock()
         # Set up __contains__ properly (takes self as first arg)
+
         def contains(self, key):
             return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
@@ -174,6 +175,7 @@ class TestPhotoOffloader:
         """Test parsing location when GPS data is not present."""
         mock_exif_data = MagicMock()
         # Set up __contains__ to return False for GPS_INFO_TAG_ID
+
         def contains(self, key):
             return key != PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
@@ -185,6 +187,7 @@ class TestPhotoOffloader:
     def test_parse_exif_location_missing_coordinates(self, app):
         """Test parsing location when GPS coordinates are missing."""
         mock_exif_data = MagicMock()
+
         def contains(self, key):
             return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
@@ -203,6 +206,7 @@ class TestPhotoOffloader:
     def test_parse_exif_location_exception_handling(self, app):
         """Test parsing location handles exceptions gracefully."""
         mock_exif_data = MagicMock()
+
         def contains(self, key):
             return key == PhotoOffloader.GPS_INFO_TAG_ID
         mock_exif_data.__contains__ = contains
@@ -271,7 +275,7 @@ class TestPhotoOffloader:
             metadata = app._extract_metadata(photo_path, use_file_date=True)
             assert metadata.date_taken is not None
             assert isinstance(metadata.date_taken, datetime)
-            assert metadata.date_taken.date() == datetime.now().date() # Should be today
+            assert metadata.date_taken.date() == datetime.now().date()  # Should be today
 
     def test_extract_metadata_use_file_date_does_not_override_exif(self, app):
         """Test _extract_metadata does not override EXIF date when use_file_date=True."""
@@ -309,13 +313,18 @@ class TestPhotoOffloader:
             # Mock stat to not have st_birthtime (simulate Linux/Windows systems)
             original_stat = photo_path.stat()
             # Create a mock stat object without st_birthtime attribute
+
             class MockStat:
                 def __init__(self, original_stat):
                     self.st_mtime = original_stat.st_mtime
                     # Copy other common stat attributes
-                    for attr in ['st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime']:
+                    for attr in [
+                        'st_mode', 'st_ino', 'st_dev', 'st_nlink',
+                        'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime'
+                    ]:
                         if hasattr(original_stat, attr):
                             setattr(self, attr, getattr(original_stat, attr))
+
                 # Explicitly don't have st_birthtime
                 def __hasattr__(self, name):
                     if name == 'st_birthtime':
@@ -836,7 +845,8 @@ class TestPhotoOffloader:
 
                 with patch.object(app, 'bucket_photos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_photos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
@@ -863,7 +873,7 @@ class TestPhotoOffloader:
                 assert (dest_dir / "unknown" / "photos.zip").exists()
 
     def test_offload_photos_invalid_format_archive_mode(self, app):
-        """Test offload_photos archives photos with invalid year-month format to unknown directory when keep_unknown=True."""
+        """Test offload_photos archives photos with invalid year-month format to unknown directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             source_dir = Path(tmpdir) / "source"
             dest_dir = Path(tmpdir) / "dest"
@@ -877,7 +887,8 @@ class TestPhotoOffloader:
 
                 with patch.object(app, 'bucket_photos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_photos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
 
@@ -919,7 +930,8 @@ class TestPhotoOffloader:
 
                 with patch.object(app, 'bucket_photos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [PhotoMetadata(path=photo, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_photos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
 

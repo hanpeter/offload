@@ -138,7 +138,10 @@ class VideoOffloader:
                     elif ' ' in date_str_no_tz:
                         date_part = date_str_no_tz.split(' ')[0]
                     else:
-                        date_part = date_str_no_tz[:VideoOffloader.MIN_DATE_STRING_LENGTH] if len(date_str_no_tz) >= VideoOffloader.MIN_DATE_STRING_LENGTH else date_str_no_tz
+                        if len(date_str_no_tz) >= VideoOffloader.MIN_DATE_STRING_LENGTH:
+                            date_part = date_str_no_tz[:VideoOffloader.MIN_DATE_STRING_LENGTH]
+                        else:
+                            date_part = date_str_no_tz
 
                     # Try parsing date part with colon separator (EXIF format)
                     if ':' in date_part and len(date_part) >= VideoOffloader.MIN_DATE_STRING_LENGTH:
@@ -180,7 +183,9 @@ class VideoOffloader:
                             pass
 
             # Try standard GPSLatitude/GPSLongitude (DMS format)
-            if any(tag in metadata for tag in VideoOffloader.GPS_LATITUDE_TAGS) and any(tag in metadata for tag in VideoOffloader.GPS_LONGITUDE_TAGS):
+            has_lat = any(tag in metadata for tag in VideoOffloader.GPS_LATITUDE_TAGS)
+            has_lon = any(tag in metadata for tag in VideoOffloader.GPS_LONGITUDE_TAGS)
+            if has_lat and has_lon:
                 try:
                     # Find the first available latitude tag
                     lat_tag = next(tag for tag in VideoOffloader.GPS_LATITUDE_TAGS if tag in metadata)
@@ -363,7 +368,9 @@ class VideoOffloader:
             return UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.YEAR_MONTH_DAY:
             if video.date_taken is not None:
-                return f"{video.date_taken.year}{YEAR_MONTH_SEPARATOR}{video.date_taken.month:02d}{YEAR_MONTH_SEPARATOR}{video.date_taken.day:02d}"
+                day = video.date_taken.day
+                return (f"{video.date_taken.year}{YEAR_MONTH_SEPARATOR}"
+                        f"{video.date_taken.month:02d}{YEAR_MONTH_SEPARATOR}{day:02d}")
             return UNKNOWN_BUCKET_KEY
         else:
             raise ValueError(f"Unsupported group_by parameter: {group_by}")
@@ -512,7 +519,10 @@ class VideoOffloader:
         else:
             self.copy_videos(videos, destination)
 
-    def offload_videos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True, use_file_date: bool = False) -> None:
+    def offload_videos(
+        self, source_dir: str | Path, destination_dir: str | Path,
+        to_archive: bool = False, keep_unknown: bool = True, use_file_date: bool = False
+    ) -> None:
         """
         Read videos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
@@ -561,7 +571,9 @@ class VideoOffloader:
                 if keep_unknown:
                     # Save videos with invalid year-month format to unknown directory
                     unknown_dir = dest_path / UNKNOWN_DIRECTORY
-                    self.logger.info("Processing %d video(s) with invalid year-month format (%s) to unknown directory", len(bucket_videos), year_month)
+                    self.logger.info(
+                        "Processing %d video(s) with invalid year-month format (%s) to unknown directory",
+                        len(bucket_videos), year_month)
                     self._save_videos(bucket_videos, unknown_dir, to_archive)
                 else:
                     # Skip videos with invalid year-month format
@@ -577,12 +589,16 @@ class VideoOffloader:
         # Log photos that were saved to unknown directory or skipped
         if unknown_count > 0:
             if keep_unknown:
-                self.logger.info("%d video(s) were saved to unknown directory due to missing date information", unknown_count)
+                self.logger.info(
+                    "%d video(s) were saved to unknown directory due to missing date information",
+                    unknown_count)
             else:
                 self.logger.info("%d video(s) were skipped due to missing date information", unknown_count)
         if invalid_format_count > 0:
             if keep_unknown:
-                self.logger.info("%d video(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+                self.logger.info(
+                    "%d video(s) were saved to unknown directory due to invalid year-month format",
+                    invalid_format_count)
             else:
                 self.logger.info("%d video(s) were skipped due to invalid year-month format", invalid_format_count)
         self.logger.info("Offloaded videos from %s to %s", source_dir, destination_dir)

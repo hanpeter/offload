@@ -516,7 +516,7 @@ class TestVideoOffloader:
                 metadata_with_file_date = app._extract_metadata(video_path, use_file_date=True)
                 assert metadata_with_file_date.date_taken is not None
                 assert isinstance(metadata_with_file_date.date_taken, datetime)
-                assert metadata_with_file_date.date_taken.date() == datetime.now().date() # Should be today
+                assert metadata_with_file_date.date_taken.date() == datetime.now().date()  # Should be today
 
     def test_extract_metadata_use_file_date_does_not_override_metadata(self, app):
         """Test _extract_metadata does not override metadata date when use_file_date=True."""
@@ -555,13 +555,18 @@ class TestVideoOffloader:
             # Mock stat to not have st_birthtime (simulate Linux/Windows systems)
             original_stat = video_path.stat()
             # Create a mock stat object without st_birthtime attribute
+
             class MockStat:
                 def __init__(self, original_stat):
                     self.st_mtime = original_stat.st_mtime
                     # Copy other common stat attributes
-                    for attr in ['st_mode', 'st_ino', 'st_dev', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime']:
+                    for attr in [
+                        'st_mode', 'st_ino', 'st_dev', 'st_nlink',
+                        'st_uid', 'st_gid', 'st_size', 'st_atime', 'st_ctime'
+                    ]:
                         if hasattr(original_stat, attr):
                             setattr(self, attr, getattr(original_stat, attr))
+
                 # Explicitly don't have st_birthtime
                 def __hasattr__(self, name):
                     if name == 'st_birthtime':
@@ -1220,7 +1225,8 @@ class TestVideoOffloader:
 
                 with patch.object(app, 'bucket_videos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=True)
 
@@ -1247,7 +1253,7 @@ class TestVideoOffloader:
                 assert (dest_dir / "unknown" / "videos.zip").exists()
 
     def test_offload_videos_invalid_format_archive_mode(self, app):
-        """Test offload_videos archives videos with invalid year-month format to unknown directory when keep_unknown=True."""
+        """Test offload_videos archives videos with invalid year-month format to unknown directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             source_dir = Path(tmpdir) / "source"
             dest_dir = Path(tmpdir) / "dest"
@@ -1261,7 +1267,8 @@ class TestVideoOffloader:
 
                 with patch.object(app, 'bucket_videos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_videos(source_dir, dest_dir, to_archive=True, keep_unknown=True)
 
@@ -1303,7 +1310,8 @@ class TestVideoOffloader:
 
                 with patch.object(app, 'bucket_videos') as mock_bucket:
                     # Return a bucket with invalid format
-                    mock_bucket.return_value = {"invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
+                    mock_bucket.return_value = {
+                        "invalid-format": [VideoMetadata(path=video, date_taken=datetime(2023, 5, 15))]}
 
                     app.offload_videos(source_dir, dest_dir, to_archive=False, keep_unknown=False)
 
