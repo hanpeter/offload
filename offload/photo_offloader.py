@@ -254,7 +254,9 @@ class PhotoOffloader:
             return UNKNOWN_BUCKET_KEY
         elif group_by == GroupBy.YEAR_MONTH_DAY:
             if photo.date_taken is not None:
-                return f"{photo.date_taken.year}{YEAR_MONTH_SEPARATOR}{photo.date_taken.month:02d}{YEAR_MONTH_SEPARATOR}{photo.date_taken.day:02d}"
+                day = photo.date_taken.day
+                return (f"{photo.date_taken.year}{YEAR_MONTH_SEPARATOR}"
+                        f"{photo.date_taken.month:02d}{YEAR_MONTH_SEPARATOR}{day:02d}")
             return UNKNOWN_BUCKET_KEY
         else:
             raise ValueError(f"Unsupported group_by parameter: {group_by}")
@@ -403,7 +405,10 @@ class PhotoOffloader:
         else:
             self.copy_photos(photos, destination)
 
-    def offload_photos(self, source_dir: str | Path, destination_dir: str | Path, to_archive: bool = False, keep_unknown: bool = True, use_file_date: bool = False) -> None:
+    def offload_photos(
+        self, source_dir: str | Path, destination_dir: str | Path,
+        to_archive: bool = False, keep_unknown: bool = True, use_file_date: bool = False
+    ) -> None:
         """
         Read photos from source directory, bucket by year-month, and copy or archive to destination
         organized in year=X/month=Y directory structure.
@@ -452,7 +457,9 @@ class PhotoOffloader:
                 if keep_unknown:
                     # Save photos with invalid year-month format to unknown directory
                     unknown_dir = dest_path / UNKNOWN_DIRECTORY
-                    self.logger.info("Processing %d photo(s) with invalid year-month format (%s) to unknown directory", len(bucket_photos), year_month)
+                    self.logger.info(
+                        "Processing %d photo(s) with invalid year-month format (%s) to unknown directory",
+                        len(bucket_photos), year_month)
                     self._save_photos(bucket_photos, unknown_dir, to_archive)
                 else:
                     # Skip photos with invalid year-month format
@@ -468,12 +475,16 @@ class PhotoOffloader:
         # Log photos that were saved to unknown directory or skipped
         if unknown_count > 0:
             if keep_unknown:
-                self.logger.info("%d photo(s) were saved to unknown directory due to missing date information", unknown_count)
+                self.logger.info(
+                    "%d photo(s) were saved to unknown directory due to missing date information",
+                    unknown_count)
             else:
                 self.logger.info("%d photo(s) were skipped due to missing date information", unknown_count)
         if invalid_format_count > 0:
             if keep_unknown:
-                self.logger.info("%d photo(s) were saved to unknown directory due to invalid year-month format", invalid_format_count)
+                self.logger.info(
+                    "%d photo(s) were saved to unknown directory due to invalid year-month format",
+                    invalid_format_count)
             else:
                 self.logger.info("%d photo(s) were skipped due to invalid year-month format", invalid_format_count)
         self.logger.info("Offloaded photos from %s to %s", source_dir, destination_dir)

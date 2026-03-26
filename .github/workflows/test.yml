@@ -25,6 +25,8 @@ jobs:
           cache: "poetry"
       - name: Install dependencies
         run: poetry install --with=dev --no-interaction --no-root
+      - name: Lint
+        run: poetry run pycodestyle
       - name: Test and check coverage
         run: poetry run pytest --cov=offload --cov-report=term --cov-fail-under=80
 
