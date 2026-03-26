@@ -1,6 +1,6 @@
 # offload
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/hanpeter/offload)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/hanpeter/offload)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fhanpeter%2Foffload-blue)](https://github.com/hanpeter/offload/pkgs/container/offload)
