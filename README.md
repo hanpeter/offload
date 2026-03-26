@@ -78,7 +78,7 @@ docker pull ghcr.io/hanpeter/offload:latest
 Or use a specific version tag:
 
 ```bash
-docker pull ghcr.io/hanpeter/offload:v0.2.0
+docker pull ghcr.io/hanpeter/offload:v0.3.0
 ```
 
 Alternatively, you can build the image locally:
