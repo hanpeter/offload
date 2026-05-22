@@ -11,7 +11,7 @@ ENV POETRY_NO_INTERACTION=1 \
     POETRY_NO_CACHE=1 \
     PATH="/opt/poetry/bin:$PATH"
 RUN python3 -m venv /opt/poetry && \
-    /opt/poetry/bin/pip install --no-cache-dir poetry==2.3.2
+    /opt/poetry/bin/pip install --no-cache-dir poetry==2.4.1
 
 # Set working directory
 WORKDIR /offload
