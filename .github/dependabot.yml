@@ -7,10 +7,14 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
-  - package-ecosystem: "helm"
+  - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Distroless python3-debian13 only supports Python 3.13
+      - dependency-name: "python"
+        versions: [">= 3.14"]
     commit-message:
       prefix: "chore"
       include: "scope"
