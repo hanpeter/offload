@@ -1,11 +1,12 @@
 # offload
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/hanpeter/offload)
-[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fhanpeter%2Foffload-blue)](https://github.com/hanpeter/offload/pkgs/container/offload)
-[![Tests](https://github.com/hanpeter/offload/actions/workflows/test.yml/badge.svg)](https://github.com/hanpeter/offload/actions/workflows/test.yml)
-[![Build](https://github.com/hanpeter/offload/actions/workflows/build.yml/badge.svg)](https://github.com/hanpeter/offload/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/github/license/hanpeter/offload?style=flat-square)](https://opensource.org/licenses/MIT)
+[![GitHub release](https://img.shields.io/github/v/release/hanpeter/offload?logo=github&style=flat-square)](https://github.com/hanpeter/offload/releases/latest)
+[![Python Version](https://img.shields.io/python/required-version-toml?tomlFilePath=https://raw.githubusercontent.com/hanpeter/offload/main/pyproject.toml&logo=python&style=flat-square)](https://www.python.org/downloads/)
+[![Docker Image](https://img.shields.io/badge/docker-ghcr.io%2Fhanpeter%2Foffload-blue?logo=docker&style=flat-square)](https://github.com/hanpeter/offload/pkgs/container/offload)
+[![Last commit](https://img.shields.io/github/last-commit/hanpeter/offload?logo=github&style=flat-square)](https://github.com/hanpeter/offload/commits)
+[![Test](https://github.com/hanpeter/offload/actions/workflows/test.yml/badge.svg?style=flat-square)](https://github.com/hanpeter/offload/actions/workflows/test.yml)
+[![Build](https://github.com/hanpeter/offload/actions/workflows/build.yml/badge.svg?style=flat-square)](https://github.com/hanpeter/offload/actions/workflows/build.yml)
 
 CLI tool to organize photos and videos by extracting EXIF metadata. Automatically creates structured directories and supports archiving to zip files.
 
@@ -13,16 +14,16 @@ CLI tool to organize photos and videos by extracting EXIF metadata. Automaticall
 
 - [Purpose](#purpose)
 - [Installation](#installation)
-  - [Option 1: Install from Source Code](#option-1-install-from-source-code)
+  - [Option 1: Use Docker](#option-1-use-docker)
+  - [Option 2: Install from Source Code](#option-2-install-from-source-code)
     - [Prerequisites](#prerequisites)
     - [Installing offload](#installing-offload)
-  - [Option 2: Use Docker](#option-2-use-docker)
 - [Usage](#usage)
   - [Options](#options)
-  - [Option 1: Using the Command-Line Tool](#option-1-using-the-command-line-tool)
+  - [Option 1: Using Docker](#option-1-using-docker)
     - [Basic Syntax](#basic-syntax)
     - [Examples](#examples)
-  - [Option 2: Using Docker](#option-2-using-docker-1)
+  - [Option 2: Using the Command-Line Tool](#option-2-using-the-command-line-tool)
     - [Basic Syntax](#basic-syntax-1)
     - [Examples](#examples-1)
 - [Contributing](#contributing)
@@ -41,9 +42,25 @@ Key features:
 
 ## Installation
 
-You can install `offload` in two ways: from source code or using Docker. Docker is recommended if you want to avoid installing system dependencies manually.
+You can install `offload` in two ways: using Docker or from source code. Docker is recommended if you want to avoid installing system dependencies manually.
 
-### Option 1: Install from Source Code
+### Option 1: Use Docker
+
+Pre-built images are published to GitHub Container Registry (GHCR) on tagged releases:
+
+```bash
+docker pull ghcr.io/hanpeter/offload:latest
+```
+
+Or build the image locally:
+
+```bash
+docker build -t offload .
+```
+
+The Docker image uses a multi-stage build with a distroless base image for minimal size (~119MB). All dependencies, including `pillow-heif` and `exiftool`, are included in the image.
+
+### Option 2: Install from Source Code
 
 #### Prerequisites
 
@@ -67,31 +84,9 @@ Or if you prefer pip:
 pip install .
 ```
 
-### Option 2: Use Docker
-
-Pre-built Docker images are available from GitHub Container Registry (GHCR) and are automatically built by GitHub Actions. You can pull and use the image directly:
-
-```bash
-docker pull ghcr.io/hanpeter/offload:latest
-```
-
-Or use a specific version tag:
-
-```bash
-docker pull ghcr.io/hanpeter/offload:v0.3.0
-```
-
-Alternatively, you can build the image locally:
-
-```bash
-docker build -t offload .
-```
-
-The Docker image uses a multi-stage build with a distroless base image for minimal size (~119MB). All dependencies, including `pillow-heif` and `exiftool`, are included in the image.
-
 ## Usage
 
-The `offload` command-line tool provides several options to customize how your media files are processed. You can use it either directly from the command line (if installed from source) or via Docker.
+The `offload` command-line tool provides several options to customize how your media files are processed. You can use it either via Docker or directly from the command line (if installed from source).
 
 ### Options
 
@@ -117,49 +112,7 @@ The `offload` command-line tool provides several options to customize how your m
 
 - **`--use-file-date`**: Use file creation date as fallback when EXIF/metadata date is not available. By default, files without valid EXIF/metadata dates are saved to the unknown directory (unless `--skip-unknown` is used).
 
-### Option 1: Using the Command-Line Tool
-
-If you installed `offload` from source code, you can use it directly:
-
-#### Basic Syntax
-
-```bash
-offload -s <source_directory> -d <destination_directory> [OPTIONS]
-```
-
-#### Examples
-
-Copy all photos and videos from a source directory to a destination:
-
-```bash
-offload -s /path/to/photos -d /path/to/backup
-```
-
-Archive only photos into zip files:
-
-```bash
-offload -s /path/to/photos -d /path/to/backup --archive --media-type photos
-```
-
-Process videos with debug logging:
-
-```bash
-offload -s /path/to/videos -d /path/to/backup --media-type videos --log-level DEBUG
-```
-
-Skip files that cannot be categorized instead of saving them to unknown directory:
-
-```bash
-offload -s /path/to/photos -d /path/to/backup --skip-unknown
-```
-
-Use file creation date as fallback when EXIF metadata is missing:
-
-```bash
-offload -s /path/to/photos -d /path/to/backup --use-file-date
-```
-
-### Option 2: Using Docker
+### Option 1: Using Docker
 
 If you're using the Docker image from GHCR, mount your source and destination directories as volumes:
 
@@ -203,6 +156,55 @@ docker run --rm -v /path/to/photos:/source -v /path/to/backup:/dest ghcr.io/hanp
 
 **Note:** If you built the image locally with `docker build -t offload .`, you can use `offload` instead of `ghcr.io/hanpeter/offload:latest` in the examples above.
 
+### Option 2: Using the Command-Line Tool
+
+If you installed `offload` from source code, you can use it directly:
+
+#### Basic Syntax
+
+```bash
+offload -s <source_directory> -d <destination_directory> [OPTIONS]
+```
+
+#### Examples
+
+Copy all photos and videos from a source directory to a destination:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup
+```
+
+Archive only photos into zip files:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup --archive --media-type photos
+```
+
+Process videos with debug logging:
+
+```bash
+offload -s /path/to/videos -d /path/to/backup --media-type videos --log-level DEBUG
+```
+
+Skip files that cannot be categorized instead of saving them to unknown directory:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup --skip-unknown
+```
+
+Use file creation date as fallback when EXIF metadata is missing:
+
+```bash
+offload -s /path/to/photos -d /path/to/backup --use-file-date
+```
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. CI (`test.yml`) runs the same checks on every PR:
+
+```bash
+poetry run pycodestyle
+poetry run pytest
+```
+
+Coverage is gated at 95% (`pyproject.toml`). CI (`build.yml`) also builds the Docker image on every PR and, on tagged releases, publishes it to GHCR and creates a GitHub Release.
