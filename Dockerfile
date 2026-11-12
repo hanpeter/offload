@@ -16,15 +16,18 @@ RUN python3 -m venv /opt/poetry && \
 # Set working directory
 WORKDIR /offload
 
-# Copy dependency files
-COPY pyproject.toml poetry.lock ./
+# Copy dependency files and README
+COPY pyproject.toml poetry.lock README.md ./
 
 # Install dependencies
 RUN poetry install --without=dev --no-root
 
-# Copy application code and README
+# Set the package version from the release tag
+ARG VERSION=0.0.0
+RUN poetry version "${VERSION}"
+
+# Copy application code
 COPY offload/ ./offload/
-COPY README.md ./
 
 # Install application
 RUN poetry install --without=dev
